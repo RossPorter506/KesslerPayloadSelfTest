@@ -1,5 +1,5 @@
 [package]
-name = "msp430_pcbself_test"
+name = "msp430_pcb_self_test"
 version = "0.0.1"
 authors = ["Ross Porter <rossporter506@gmail.com>"]
 edition = "2018"
@@ -20,15 +20,18 @@ panic-never = "0.1.0"
 msp430-rt = "0.4.0"
 critical-section = "1.0.0"
 msp430 = { version = "0.4.0", features = ["critical-section-single-core"] }
+no-std-compat="0.4.1"
+libm="0.2.6"
 
 [profile.release]
-lto = "fat"
+opt-level = "s" # "z" fails to compile.
 codegen-units = 1
-opt-level = "z"
+lto = "fat"
 
 [profile.dev]
 opt-level = "s"
 codegen-units = 1
+lto = "fat"
 debug = true
 
 [profile.dev.package."*"]

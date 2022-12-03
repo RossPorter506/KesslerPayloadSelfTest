@@ -1,10 +1,12 @@
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::{spi::PeripheralSPI, pcb_mapping_v5::PeripheralSPIChipSelectPins};
+use crate::pcb_mapping_v5::DAC_VCC_VOLTAGE_MILLIVOLTS;
+use crate::spi::{PayloadSPI};
 use crate::dac::{DACCommand::*, DACChannel::*};
-const dac_resolution: u16 = 4095;
 
-enum DACCommand{
+const DAC_RESOLUTION: u16 = 4095;
+use msp430fr2x5x_hal::gpio::{*};
+pub enum DACCommand{
     WriteToRegisterX=0b000,
 	UpdateRegisterX=0b0001,
 	WriteToRegisterXAndUpdateAll=0b0010,
@@ -16,7 +18,7 @@ enum DACCommand{
 	NoOp=0b1111,
 }
 
-enum DACChannel{
+pub enum DACChannel{
     ChannelA=0b0000,
 	ChannelB=0b0001,
 	ChannelC=0b0010,
@@ -24,30 +26,30 @@ enum DACChannel{
 	AllChannels=0b1111,
 }
 
-struct DAC {
-    
+pub struct DAC {
+    pub cs_pin: Pin<P6, Pin3, Output>,
 }
 impl DAC{
-    fn send_command(&self, spi_bus: &mut dyn PeripheralSPI, cs_pins: &mut PeripheralSPIChipSelectPins,
-                    command: DACCommand, channel: DACChannel, value: u16) {
+    pub fn new(cs_pin: Pin<P6, Pin3, Output>, spi_bus: &mut dyn PayloadSPI) -> DAC {
+        let mut dac = DAC{cs_pin};
+        dac.init(spi_bus);
+        dac
+    }
+    pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
+                        spi_bus: &mut dyn PayloadSPI) {
         spi_bus.set_sck_idle_low();
-        cs_pins.dac.set_low();
+        self.cs_pin.set_low().ok();
         let payload: u32 = ((command as u32) << 20) | ((channel as u32) << 16) | ((value as u32) << 4);
         spi_bus.send(24, payload);
-        cs_pins.dac.set_high();
+        self.cs_pin.set_high().ok();
     }
-    fn init(&self, spi_bus: &mut dyn PeripheralSPI, cs_pins: &mut PeripheralSPIChipSelectPins,){
-        self. send_command(spi_bus, cs_pins,
-                     SelectExternalReference, ChannelA, 0x000);
+    fn init(&mut self, spi_bus: &mut dyn PayloadSPI){
+        self.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
     }
-    fn voltage_to_count(target_voltage_millivolts: u16) -> u16{
-        todo!()
+    pub fn voltage_to_count(&self, mut target_voltage_millivolts: u16) -> u16{
+        if target_voltage_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {
+            target_voltage_millivolts = DAC_VCC_VOLTAGE_MILLIVOLTS;
+        }
+        ((target_voltage_millivolts as u32 * DAC_RESOLUTION as u32) / DAC_VCC_VOLTAGE_MILLIVOLTS as u32) as u16
     }
 }
-/*
-uint16_t DAC::voltageToCount(uint16_t targetVoltageMillivolts){
-	if (targetVoltageMillivolts > DAC_VCC_VOLTAGE_MILLIVOLTS){
-		targetVoltageMillivolts = DAC_VCC_VOLTAGE_MILLIVOLTS;
-	}
-	return ((uint32_t)targetVoltageMillivolts * dacResolution) / DAC_VCC_VOLTAGE_MILLIVOLTS;
-}*/

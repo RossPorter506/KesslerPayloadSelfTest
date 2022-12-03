@@ -11,7 +11,7 @@ pub trait OBCSPI{
     fn set_sck_idle_low(&mut self);
     fn set_sck_idle_high(&mut self);
 }
-pub trait PeripheralSPI{
+pub trait PayloadSPI{
     fn send(&mut self, len: u8, data: u32);
     fn receive(&mut self, len: u8) -> u32;
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32;
@@ -19,7 +19,7 @@ pub trait PeripheralSPI{
     fn set_sck_idle_high(&mut self);
 }
 
-struct OBCSPIBitBang{
+pub struct OBCSPIBitBang{
     pub miso:   Pin<P4, Pin2, Input<Pulldown>>, 
     pub mosi:   Pin<P4, Pin3, Output>, 
     pub sck:    Pin<P4, Pin1, Output>, 
@@ -27,14 +27,15 @@ struct OBCSPIBitBang{
     _chip_select_interrupt:  Pin<P2, Pin0, Input<Pullup>>, 
 }
 impl OBCSPIBitBang {
-    fn new(&mut self, pins: OBCSPIPins) {
-        self.miso = pins.miso.to_gpio().to_input_pulldown();
-        self.mosi = pins.mosi.to_gpio();
-        self.sck  = pins.sck.to_gpio();
-        self._chip_select = pins.chip_select;
-        self._chip_select_interrupt = pins.chip_select_interrupt;
+    pub fn new(pins: OBCSPIPins) -> OBCSPIBitBang {
+        OBCSPIBitBang{  miso: pins.miso.to_gpio().to_input_pulldown(),
+                        mosi: pins.mosi.to_gpio(),
+                        sck:  pins.sck.to_gpio(),
+                        _chip_select: pins.chip_select,
+                        _chip_select_interrupt: pins.chip_select_interrupt,
+        }
     }
-    fn return_pins(self) -> OBCSPIPins{
+    pub fn return_pins(self) -> OBCSPIPins {
         OBCSPIPins{ miso: self.miso.to_output().to_alternate1(), 
                     mosi: self.mosi.to_alternate1(), 
                     sck: self.sck.to_alternate1(), 
@@ -89,31 +90,32 @@ impl OBCSPI for OBCSPIBitBang {
         result
     }
     fn set_sck_idle_low(&mut self){
-        self.sck.set_low();
+        self.sck.set_low().ok();
     }
     fn set_sck_idle_high(&mut self){
-        self.sck.set_high();
+        self.sck.set_high().ok();
     }
 }
 
-struct PayloadSPIBitBang{
-    pub miso:   Pin<P6, Pin4, Input<Pulldown>>, 
-    pub mosi:   Pin<P6, Pin3, Output>, 
-    pub sck:    Pin<P6, Pin2, Output>, 
+pub struct PayloadSPIBitBang{
+    pub miso:   Pin<P4, Pin7, Input<Pulldown>>, 
+    pub mosi:   Pin<P4, Pin6, Output>, 
+    pub sck:    Pin<P4, Pin5, Output>, 
 }
 impl PayloadSPIBitBang {
-    fn new(&mut self, pins: PayloadSPIPins) {
-        self.miso = pins.miso.to_gpio().to_input_pulldown();
-        self.mosi = pins.mosi.to_gpio();
-        self.sck  = pins.sck.to_gpio();
+    pub fn new(pins: PayloadSPIPins) -> PayloadSPIBitBang {
+        PayloadSPIBitBang{  miso: pins.miso.to_gpio().to_input_pulldown(),
+                            mosi: pins.mosi.to_gpio(),
+                            sck:  pins.sck.to_gpio(),
+        }
     }
-    fn return_pins(self) -> PayloadSPIPins{
+    pub fn return_pins(self) -> PayloadSPIPins{
         PayloadSPIPins{  miso: self.miso.to_output().to_alternate1(), 
                             mosi: self.mosi.to_alternate1(), 
                             sck: self.sck.to_alternate1()}
     }
 }
-impl PeripheralSPI for PayloadSPIBitBang {
+impl PayloadSPI for PayloadSPIBitBang {
     fn send(&mut self, len: u8, data: u32) {
         let mut current_pos: u8 = 0;
         while current_pos < len {
@@ -160,10 +162,10 @@ impl PeripheralSPI for PayloadSPIBitBang {
         result
     }
     fn set_sck_idle_low(&mut self){
-        self.sck.set_low();
+        self.sck.set_low().ok();
     }
     fn set_sck_idle_high(&mut self){
-        self.sck.set_high();
+        self.sck.set_high().ok();
     }
 }
 
