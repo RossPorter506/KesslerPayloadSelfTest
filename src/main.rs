@@ -17,6 +17,7 @@ mod dac;
 mod adc;
 mod digipot;
 mod sensors;
+mod serial;
 use pcb_mapping_v5::{LEDPins, PayloadSPIPins};
 use sensors::{PayloadController};
 use spi::{PayloadSPIBitBang};
@@ -55,14 +56,16 @@ fn main() -> ! {
     let (smclock, _aclock) = ClockConfig::new(periph.CS).mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
                                                                      .smclk_on(SmclkDiv::_1)
                                                                      .freeze(&mut fram);
-    let serial = SerialConfig::new(  
+    let serial_tx = SerialConfig::new(  
                                 periph.E_USCI_A1,
                                 BitOrder::LsbFirst,
                                 BitCount::SevenBits,
                                 StopBits::OneStopBit,
                                 Parity::EvenParity,
                                 Loopback::NoLoop,
-                                9600).use_smclk(&smclock);
+                                9600)
+                                .use_smclk(&smclock)
+                                .tx_only(port4.pin3.to_alternate1());
 
     let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot, &mut payload_spi_bus);
     
