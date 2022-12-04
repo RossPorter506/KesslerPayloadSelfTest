@@ -3,11 +3,11 @@
 
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
 
-use adc::{TetherADC,TemperatureADC,MiscADC, ADCChannel, TemperatureSensor, MiscSensor};
+use adc::{TetherADC,TemperatureADC,MiscADC};
 use digipot::Digipot;
 use embedded_hal::digital::v2::*;
 use msp430_rt::entry;
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
 
@@ -18,6 +18,7 @@ mod adc;
 mod digipot;
 mod sensors;
 use pcb_mapping_v5::{LEDPins, PayloadSPIPins};
+use sensors::{PayloadController};
 use spi::{PayloadSPIBitBang};
 use dac::DAC;
 
@@ -40,21 +41,32 @@ fn main() -> ! {
                                         green_led: port2.pin3.to_output()};
     
     let mut payload_spi_bus = PayloadSPIBitBang::new(
-        PayloadSPIPins{ miso: port4.pin7.to_output().to_alternate1(),
-                              mosi: port4.pin6.to_output().to_alternate1(),
-                              sck:  port4.pin5.to_output().to_alternate1()});
+        PayloadSPIPins{miso: port4.pin7.to_output().to_alternate1(),
+                            mosi: port4.pin6.to_output().to_alternate1(),
+                            sck:  port4.pin5.to_output().to_alternate1()});
 
     let mut digipot = Digipot::new(port6.pin4.to_output());
     let mut dac = DAC::new(port6.pin3.to_output(), &mut payload_spi_bus);
     let mut tether_adc = TetherADC::new(port6.pin2.to_output());
     let mut temperature_adc = TemperatureADC::new(port6.pin0.to_output());
     let mut misc_adc = MiscADC::new(port5.pin4.to_output());
+    
+    let mut fram = Fram::new(periph.FRCTL);
+    let (smclock, _aclock) = ClockConfig::new(periph.CS).mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
+                                                                     .smclk_on(SmclkDiv::_1)
+                                                                     .freeze(&mut fram);
+    let serial = SerialConfig::new(  
+                                periph.E_USCI_A1,
+                                BitOrder::LsbFirst,
+                                BitCount::SevenBits,
+                                StopBits::OneStopBit,
+                                Parity::EvenParity,
+                                Loopback::NoLoop,
+                                9600).use_smclk(&smclock);
 
-    let sensor_a = TemperatureSensor{channel: ADCChannel::IN0};
-    let sensor_b = MiscSensor{channel: ADCChannel::IN0};
-
-    //misc_adc.read_voltage_from(&sensor_a, &mut payload_spi_bus); // should compile error
-    misc_adc.read_voltage_from(&sensor_b, &mut payload_spi_bus);
+    let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot, &mut payload_spi_bus);
+    
+    //payload.get_cathode_offset_current_milliamps();
 
     let mut counter: u8 = 0;
 

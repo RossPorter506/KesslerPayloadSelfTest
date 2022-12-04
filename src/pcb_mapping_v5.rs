@@ -73,10 +73,6 @@ pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
 pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
 pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
 
-// Digipot parameters
-pub const DIGIPOT_MAX_RESISTANCE: u32 = 100000;
-pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
-pub const DIGIPOT_RESOLUTION: u32 = 255;
 
 /********** Sensor mappings **********/
 // Tether ADC

@@ -3,7 +3,8 @@ use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin, InputPin};
 use msp430fr2x5x_hal::gpio::*;
 use crate::delay_cycles;
 
-
+// Trait because we can implement by either bitbanging or using peripheral
+// Separate traits befause OBC_SPI might be expanded in the future (e.g. pin interrupts)
 pub trait OBCSPI{
     fn send(&mut self, len: u8, data: u32);
     fn receive(&mut self, len: u8) -> u32;
