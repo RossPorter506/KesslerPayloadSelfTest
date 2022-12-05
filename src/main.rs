@@ -18,6 +18,7 @@ mod adc;
 mod digipot;
 mod sensors;
 mod serial;
+mod testing;
 use pcb_mapping_v5::{LEDPins, PayloadSPIPins};
 use sensors::{PayloadController};
 use spi::{PayloadSPIBitBang};
@@ -68,6 +69,7 @@ fn main() -> ! {
                                 .tx_only(port4.pin3.to_alternate1());
 
     let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot, &mut payload_spi_bus);
+    
     
     //payload.get_cathode_offset_current_milliamps();
 
