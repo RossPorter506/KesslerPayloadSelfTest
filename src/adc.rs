@@ -2,11 +2,9 @@
 // It includes generic types to allow for multiple ADCs connected to the same SPI bus. 
 // PCB-specific values (e.g. reference voltages, channel connections) can be found in the pcb_mapping file.
 
-use msp430fr2355::P6;
-use msp430fr2x5x_hal::gpio::*;
 use no_std_compat::marker::PhantomData;
 
-use crate::spi::SckIdleHigh;
+use crate::spi::{IdleHigh, SampleFallingEdge};
 use crate::{spi::PayloadSPI};
 use crate::pcb_mapping_v5::{ADC_VCC_VOLTAGE_MILLIVOLTS, ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS, AdcCsPin, TetherAdcCsPin, TemperatureAdcCsPin, MiscAdcCsPin};
 
@@ -27,10 +25,10 @@ pub enum ADCChannel {
 	IN6=6,
 	IN7=7,
 }
-
-pub type TetherADC      =   ADC<TetherAdcCsPin, TetherSensor>;
-pub type TemperatureADC =   ADC<TemperatureAdcCsPin, TemperatureSensor>;
-pub type MiscADC        =   ADC<MiscAdcCsPin, MiscSensor>;
+// Shorthand type for each ADC instance
+pub type TetherADC      = ADC<TetherAdcCsPin, TetherSensor>;
+pub type TemperatureADC = ADC<TemperatureAdcCsPin, TemperatureSensor>;
+pub type MiscADC        = ADC<MiscAdcCsPin, MiscSensor>;
 
 //Types to make sure that we can't read sensor X from ADC Y, because otherwise voltage conversion will be incorrect, etc.
 pub trait ADCSensor{fn channel(&self) -> ADCChannel;}
@@ -52,23 +50,23 @@ pub struct ADC<CsPin: AdcCsPin, SensorType:ADCSensor>{
     _adc_type: PhantomData<SensorType>
 }
 impl TetherADC{
-    pub fn new(cs_pin: Pin<P6, Pin2, Output>) -> TetherADC {
+    pub fn new(cs_pin: TetherAdcCsPin) -> TetherADC {
         ADC::<TetherAdcCsPin, TetherSensor>{vcc_millivolts: ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
     }
 }
 impl TemperatureADC{
-    pub fn new(cs_pin: Pin<P6, Pin0, Output>) -> TemperatureADC {
+    pub fn new(cs_pin: TemperatureAdcCsPin) -> TemperatureADC {
         ADC::<TemperatureAdcCsPin, TemperatureSensor>{vcc_millivolts: ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
     }
 }
 impl MiscADC{
-    pub fn new(cs_pin: Pin<P5, Pin4, Output>) -> MiscADC {
+    pub fn new(cs_pin: MiscAdcCsPin) -> MiscADC {
         ADC::<MiscAdcCsPin, MiscSensor>{vcc_millivolts: ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
     }
 }
 impl<CsPin: AdcCsPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
-    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> u16{
+    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> u16{
         let result: u16;
         let _ = self.cs_pin.set_low();
         
@@ -98,7 +96,7 @@ impl<CsPin: AdcCsPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     pub fn count_to_voltage(&self, count: u16) -> u16{
         count * self.vcc_millivolts / ADC_RESOLUTION
     }
-    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> u16{
+    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> u16{
         let count = self.read_count_from(&wanted_sensor, spi_bus);
         self.count_to_voltage(count)
     }

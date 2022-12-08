@@ -1,3 +1,5 @@
+// This file acts as an abstraction layer for PCB-specific values that may change between revisions.
+
 use embedded_hal::digital::v2::OutputPin;
 use libm::log;
 use msp430fr2x5x_hal::gpio::*;
@@ -31,6 +33,10 @@ pub struct PayloadSPIPins{
     pub mosi: Pin<P4, Pin6, Alternate1<Output>>, 
     pub sck:  Pin<P4, Pin5, Alternate1<Output>>, 
 }
+// Could be the pin type, but bitbang needs a different direction than standard.
+pub type PayloadMisoPort = P4; pub type PayloadMisoPin = Pin7;
+pub type PayloadMosiPort = P4; pub type PayloadMosiPin = Pin6;
+pub type PayloadSckPort  = P4; pub type PayloadSckPin  = Pin5;
 
 //eUSCI_A1
 pub struct OBCSPIPins{
@@ -45,7 +51,7 @@ pub struct PayloadControlPins{
     pub payload_enable: Pin<P6, Pin6, Output>, // turns on most payload devices (power supplies, isolators, etc.)
     pub heater_enable:  Pin<P4, Pin4, Output>, // turns on heater step-down converter
     pub cathode_switch: Pin<P3, Pin0, Output>, // connects cathode offset+ to exterior
-    pub tether_switch:   Pin<P6, Pin1, Output>, // connects tether bias+ to tether
+    pub tether_switch:  Pin<P6, Pin1, Output>, // connects tether bias+ to tether
 }
 
 pub struct DeploySensePins{

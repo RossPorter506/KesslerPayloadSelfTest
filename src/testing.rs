@@ -1,6 +1,6 @@
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::{spi::{PayloadSPI, SckIdleHigh}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR}};
+use crate::{spi::{PayloadSPI, IdleHigh, SampleFallingEdge}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR}};
 
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
@@ -8,7 +8,7 @@ use crate::{spi::{PayloadSPI, SckIdleHigh}, adc::{TetherADC, ADCChannel, ADC, AD
 struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
     fn test_adc_functional<CsPin: AdcCsPin, SENSOR:ADCSensor>(  adc: &mut ADC<CsPin, SENSOR>, 
-                                                                spi_bus: &mut impl PayloadSPI<SckIdleHigh>,
+                                                                spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>,
                                                                 wanted_channel: ADCChannel) -> bool {
         let adc_channel_msb = ((wanted_channel as u32) & 0b100) >> 2;
         let rest_of_adc_channel = (wanted_channel as u32) & 0b11;
@@ -38,17 +38,17 @@ impl AutomatedFunctionalTests{
     // Dependencies: Isolated 5V supply, tether ADC, isolators
     // Ask to read channel 7.
     // Return success if SPI packet valid
-    pub fn tether_adc_functional_test(tether_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+    pub fn tether_adc_functional_test(tether_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
         Self::test_adc_functional(tether_adc, spi_bus, ADCChannel::IN7)
     }
     // Dependencies: temperature ADC
-    pub fn temperature_adc_functional_test(temperature_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+    pub fn temperature_adc_functional_test(temperature_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
         // Ask to read channel 7.
         // Return success if SPI packet valid
         Self::test_adc_functional(temperature_adc, spi_bus, ADCChannel::IN7)
     }
     // Dependencies: misc ADC
-    pub fn misc_adc_functional_test(misc_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+    pub fn misc_adc_functional_test(misc_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
         // Ask to read channel 7.
         // Return success if SPI packet valid
         Self::test_adc_functional(misc_adc, spi_bus, ADCChannel::IN7)
@@ -64,7 +64,7 @@ impl AutomatedFunctionalTests{
     // Dependencies: pinpuller, pinpuller current sensor, misc ADC
     pub fn pinpuller_functional_test(   pins: &mut PinpullerPins, 
                                         adc: &mut MiscADC, 
-                                        spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> (bool, bool, bool, bool) {
+                                        spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> (bool, bool, bool, bool) {
         // Short or place small resistor between pinpuller lines
         // Enable each of the four redundant lines.
         // Measure current

@@ -12,8 +12,8 @@ use panic_msp430 as _;
 use msp430;
 use ufmt::uwrite;
 
-mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PayloadSPIPins, PinpullerPins};
-mod spi; use spi::{PayloadSPIBitBang};
+mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerPins};
+mod spi; use spi::{PayloadSPIBitBangConfig};
 mod dac; use dac::{DAC};
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot;
@@ -21,7 +21,6 @@ mod sensors;
 mod serial; use serial::SerialWriter;
 mod testing;
 
-use crate::{spi::SckIdleLow, };
 
 #[allow(unused_mut)]
 #[entry]
@@ -49,10 +48,16 @@ fn main() -> ! {
                                         yellow_led: port2.pin2.to_output(), 
                                         green_led: port2.pin3.to_output()};
     
-    let mut payload_spi_bus:PayloadSPIBitBang<SckIdleLow> = PayloadSPIBitBang::<SckIdleLow>::new_idle_low_bus(
+    /*let mut payload_spi_bus:PayloadSPIBitBang<SckIdleLow> = PayloadSPIBitBang::<SckIdleLow>::new_idle_low_bus(
         PayloadSPIPins{miso: port4.pin7.to_output().to_alternate1(),
                             mosi: port4.pin6.to_output().to_alternate1(),
-                            sck:  port4.pin5.to_output().to_alternate1()});
+                            sck:  port4.pin5.to_output().to_alternate1()});*/
+    let mut payload_spi_bus = PayloadSPIBitBangConfig::new( port4.pin7.pulldown(),
+                                                            port4.pin6.to_output(),
+                                                            port4.pin5.to_output(),)
+                                                            .sck_idle_low()
+                                                            .sample_on_rising_edge()
+                                                            .create();
 
     let mut digipot = Digipot::new(port6.pin4.to_output());
     let mut dac = DAC::new(port6.pin3.to_output(), &mut payload_spi_bus);

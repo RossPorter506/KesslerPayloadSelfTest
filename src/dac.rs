@@ -4,7 +4,7 @@
 use embedded_hal::digital::v2::OutputPin;
 
 use crate::pcb_mapping_v5::{DAC_VCC_VOLTAGE_MILLIVOLTS, DacCsPin};
-use crate::spi::{PayloadSPI, SckIdleLow};
+use crate::spi::{PayloadSPI, IdleLow, SampleRisingEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 
 const DAC_RESOLUTION: u16 = 4095;
@@ -32,25 +32,25 @@ pub struct DAC {
     pub cs_pin: DacCsPin,
 }
 impl DAC{
-    pub fn new(cs_pin: DacCsPin, spi_bus: &mut impl PayloadSPI<SckIdleLow>) -> DAC {
+    pub fn new(cs_pin: DacCsPin, spi_bus: &mut impl PayloadSPI<IdleLow,SampleRisingEdge>) -> DAC {
         let mut dac = DAC{cs_pin};
         dac.init(spi_bus);
         dac
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
-                        spi_bus: &mut impl PayloadSPI<SckIdleLow>) {
+                        spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>) {
         self.cs_pin.set_low().ok();
         let payload: u32 = ((command as u32) << 20) | ((channel as u32) << 16) | ((value as u32) << 4);
         spi_bus.send(24, payload);
         self.cs_pin.set_high().ok();
     }
-    fn init(&mut self, spi_bus: &mut impl PayloadSPI<SckIdleLow>){
+    fn init(&mut self, spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>){
         self.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
     }
-    pub fn voltage_to_count(&self, mut target_voltage_millivolts: u16) -> u16{
-        if target_voltage_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {
-            target_voltage_millivolts = DAC_VCC_VOLTAGE_MILLIVOLTS;
+    pub fn voltage_to_count(&self, mut target_millivolts: u16) -> u16{
+        if target_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {
+            target_millivolts = DAC_VCC_VOLTAGE_MILLIVOLTS;
         }
-        ((target_voltage_millivolts as u32 * DAC_RESOLUTION as u32) / DAC_VCC_VOLTAGE_MILLIVOLTS as u32) as u16
+        ((target_millivolts as u32 * DAC_RESOLUTION as u32) / DAC_VCC_VOLTAGE_MILLIVOLTS as u32) as u16
     }
 }
