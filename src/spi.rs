@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use crate::pcb_mapping_v5::{PayloadSPIPins, OBCSPIPins};
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin, InputPin};
 use msp430fr2x5x_hal::gpio::*;
@@ -12,13 +14,17 @@ pub trait OBCSPI{
     fn set_sck_idle_low(&mut self);
     fn set_sck_idle_high(&mut self);
 }
-pub trait PayloadSPI{
+pub trait PayloadSPI<IdleType: SckIdleType>{
     fn send(&mut self, len: u8, data: u32);
     fn receive(&mut self, len: u8) -> u32;
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32;
-    fn set_sck_idle_low(&mut self);
-    fn set_sck_idle_high(&mut self);
 }
+
+// Some peripherals read rising edges while others read falling edges.
+// Encode this in a type so we can't pass 
+pub trait SckIdleType{}
+pub struct SckIdleHigh; impl SckIdleType for SckIdleHigh{}
+pub struct SckIdleLow; impl SckIdleType for SckIdleLow{}
 
 pub struct OBCSPIBitBang{
     pub miso:   Pin<P4, Pin2, Input<Pulldown>>, 
@@ -98,25 +104,42 @@ impl OBCSPI for OBCSPIBitBang {
     }
 }
 
-pub struct PayloadSPIBitBang{
-    pub miso:   Pin<P4, Pin7, Input<Pulldown>>, 
+pub struct PayloadSPIBitBang<IdleType: SckIdleType>{
+    pub miso:   Pin<P4, Pin7, Input<Pullup>>, 
     pub mosi:   Pin<P4, Pin6, Output>, 
     pub sck:    Pin<P4, Pin5, Output>, 
+    _idle_type: PhantomData<IdleType>,
 }
-impl PayloadSPIBitBang {
-    pub fn new(pins: PayloadSPIPins) -> PayloadSPIBitBang {
-        PayloadSPIBitBang{  miso: pins.miso.to_gpio().to_input_pulldown(),
-                            mosi: pins.mosi.to_gpio(),
-                            sck:  pins.sck.to_gpio(),
-        }
+impl<IdleType: SckIdleType> PayloadSPIBitBang<IdleType> {
+    pub fn new_idle_high_bus(pins: PayloadSPIPins) -> PayloadSPIBitBang<SckIdleHigh>{
+        PayloadSPIBitBang::<SckIdleHigh>{  
+            miso: pins.miso.to_gpio().to_input_pullup(),
+            mosi: pins.mosi.to_gpio(),
+            sck:  pins.sck.to_gpio(),
+            _idle_type: PhantomData,}
+    }
+    pub fn new_idle_low_bus(pins: PayloadSPIPins) -> PayloadSPIBitBang<SckIdleLow>{
+        PayloadSPIBitBang::<SckIdleLow>{  
+            miso: pins.miso.to_gpio().to_input_pullup(),
+            mosi: pins.mosi.to_gpio(),
+            sck:  pins.sck.to_gpio(),
+            _idle_type: PhantomData,}
     }
     pub fn return_pins(self) -> PayloadSPIPins{
         PayloadSPIPins{  miso: self.miso.to_output().to_alternate1(), 
-                            mosi: self.mosi.to_alternate1(), 
-                            sck: self.sck.to_alternate1()}
+                         mosi: self.mosi.to_alternate1(), 
+                         sck: self.sck.to_alternate1()}
+    }
+    pub fn into_sck_idle_low(mut self) -> PayloadSPIBitBang<SckIdleLow>{
+        self.sck.set_low().ok();
+        PayloadSPIBitBang::<SckIdleLow>{mosi: self.mosi, miso: self.miso, sck: self.sck, _idle_type: PhantomData}
+    }
+    pub fn into_sck_idle_high(mut self) -> PayloadSPIBitBang<SckIdleHigh>{
+        self.sck.set_high().ok();
+        PayloadSPIBitBang::<SckIdleHigh>{mosi: self.mosi, miso: self.miso, sck: self.sck, _idle_type: PhantomData}
     }
 }
-impl PayloadSPI for PayloadSPIBitBang {
+impl<IdleType:SckIdleType> PayloadSPI<IdleType> for PayloadSPIBitBang<IdleType> {
     fn send(&mut self, len: u8, data: u32) {
         let mut current_pos: u8 = 0;
         while current_pos < len {
@@ -162,13 +185,8 @@ impl PayloadSPI for PayloadSPIBitBang {
         }
         result
     }
-    fn set_sck_idle_low(&mut self){
-        self.sck.set_low().ok();
-    }
-    fn set_sck_idle_high(&mut self){
-        self.sck.set_high().ok();
-    }
 }
+
 
 /*
 struct OBCSPIPeripheral{

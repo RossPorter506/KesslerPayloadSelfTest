@@ -1,3 +1,4 @@
+use embedded_hal::digital::v2::OutputPin;
 use libm::log;
 use msp430fr2x5x_hal::gpio::*;
 
@@ -10,12 +11,19 @@ pub struct LEDPins{
 }
 
 pub struct PayloadSPIChipSelectPins{
-    pub heater_digipot:         Pin<P6, Pin4, Output>, // used to control the heater supply
-    pub dac:                    Pin<P6, Pin3, Output>, // DAC outputs are used to control the cathode offset and tether bias supply's target voltages
-    pub tether_measurement_adc: Pin<P6, Pin2, Output>, //ADC1, measures voltages and currents from tether circuitry
-    pub board_temperature_adc:  Pin<P6, Pin0, Output>, //ADC2, measures board temperatures
-    pub misc_adc:               Pin<P5, Pin4, Output>, //ADC0, measures everything else
+    pub digipot:        Pin<P6, Pin4, Output>, // used to control the heater supply
+    pub dac:            Pin<P6, Pin3, Output>, // DAC outputs are used to control the cathode offset and tether bias supply's target voltages
+    pub tether_adc:     Pin<P6, Pin2, Output>, //ADC1, measures voltages and currents from tether circuitry
+    pub temperature_adc:Pin<P6, Pin0, Output>, //ADC2, measures board temperatures
+    pub misc_adc:       Pin<P5, Pin4, Output>, //ADC0, measures everything else
 }
+// Shorthand for CS pins. Used by peripherals to remain generic against different PCB versions
+pub type DigipotCsPin =         Pin<P6, Pin4, Output>; impl AdcCsPin for DigipotCsPin{}
+pub type DacCsPin =             Pin<P6, Pin3, Output>; impl AdcCsPin for DacCsPin{}
+pub type TetherAdcCsPin =       Pin<P6, Pin2, Output>; impl AdcCsPin for TetherAdcCsPin{}
+pub type TemperatureAdcCsPin =  Pin<P6, Pin0, Output>; impl AdcCsPin for TemperatureAdcCsPin{}
+pub type MiscAdcCsPin =         Pin<P5, Pin4, Output>; impl AdcCsPin for MiscAdcCsPin{}
+pub trait AdcCsPin: OutputPin{}
 
 //eUSCI_B1
 pub struct PayloadSPIPins{
@@ -56,6 +64,14 @@ pub struct BurnWires{
 pub struct TetherLMSPins{
     pub tether_lms_receiver_enable: Pin<P3, Pin4, Output>, // Detects whether the endmass has ejected
     pub tether_lms_led_enable:      Pin<P3, Pin5, Output>, // Detects whether the endmass has ejected
+}
+
+pub struct PinpullerPins{
+    pub burn_wire_1:        Pin<P3, Pin2, Output>,
+    pub burn_wire_1_backup: Pin<P3, Pin3, Output>,
+    pub burn_wire_2:        Pin<P5, Pin0, Output>,
+    pub burn_wire_2_backup: Pin<P5, Pin1, Output>,
+    pub pinpuller_sense:    Pin<P5, Pin3, Input<Pullup>>,
 }
 
 // Maximum and minimum values producable by controllable power supplies

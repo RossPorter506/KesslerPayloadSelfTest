@@ -1,28 +1,60 @@
+use embedded_hal::digital::v2::OutputPin;
+
+use crate::{spi::{PayloadSPI, SckIdleHigh}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR}};
+
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
 // Functional (pass/fail) tests
 struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
+    fn test_adc_functional<CsPin: AdcCsPin, SENSOR:ADCSensor>(  adc: &mut ADC<CsPin, SENSOR>, 
+                                                                spi_bus: &mut impl PayloadSPI<SckIdleHigh>,
+                                                                wanted_channel: ADCChannel) -> bool {
+        let adc_channel_msb = ((wanted_channel as u32) & 0b100) >> 2;
+        let rest_of_adc_channel = (wanted_channel as u32) & 0b11;
+        let _ = adc.cs_pin.set_low();
+        // ADC takes four cycles to track signal. Nothing to do for first two.
+        let zeroes_1 = spi_bus.receive(2);
+
+        // Send first bit of channel. Receive third and fourth zero.
+        let zeroes_2 = spi_bus.send_and_receive(2, adc_channel_msb);
+
+        // Send other two channel bits. Receive beginning of IN0 - could have any value.
+        spi_bus.send(2, rest_of_adc_channel);
+
+        //Wait out the rest of the IN0 reading being sent to us
+        spi_bus.receive(11);
+
+        // ADC is now tracking IN7. Receive zeroes while it tracks
+        let zeroes_3 = spi_bus.receive(4);
+
+        //Finally receive ADC value from the channel we care about
+        spi_bus.receive(12);
+
+        let _ = adc.cs_pin.set_high();
+
+        zeroes_1 == 0 && zeroes_2 == 0 && zeroes_3 == 0
+    }
     // Dependencies: Isolated 5V supply, tether ADC, isolators
-    pub fn tether_adc_functional_test() -> FunctionalResult {
-        // Ask to read channel X.
-        // Return success if SPI packet valid
-        todo!();
+    // Ask to read channel 7.
+    // Return success if SPI packet valid
+    pub fn tether_adc_functional_test(tether_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+        Self::test_adc_functional(tether_adc, spi_bus, ADCChannel::IN7)
     }
-    // Dependencies: Isolated 5V supply, temperature ADC, isolators
-    pub fn temperature_adc_functional_test() -> FunctionalResult {
-        // Ask to read channel X.
+    // Dependencies: temperature ADC
+    pub fn temperature_adc_functional_test(temperature_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+        // Ask to read channel 7.
         // Return success if SPI packet valid
-        todo!();
+        Self::test_adc_functional(temperature_adc, spi_bus, ADCChannel::IN7)
     }
-    // Dependencies: Isolated 5V supply, misc ADC, isolators
-    pub fn misc_adc_functional_test() -> FunctionalResult {
-        // Ask to read channel X.
+    // Dependencies: misc ADC
+    pub fn misc_adc_functional_test(misc_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> bool {
+        // Ask to read channel 7.
         // Return success if SPI packet valid
-        todo!();
+        Self::test_adc_functional(misc_adc, spi_bus, ADCChannel::IN7)
     }
     // Dependencies: OBC SPI
-    pub fn obc_spi_functional_test() -> FunctionalResult {
+    pub fn obc_spi_functional_test() -> bool {
         // Set interrupt on cs line(?)
         // Read spi data
         // Compare against actual value
@@ -30,12 +62,30 @@ impl AutomatedFunctionalTests{
         todo!();
     }
     // Dependencies: pinpuller, pinpuller current sensor, misc ADC
-    pub fn pinpuller_functional_test() -> (FunctionalResult, FunctionalResult, FunctionalResult, FunctionalResult) {
+    pub fn pinpuller_functional_test(   pins: &mut PinpullerPins, 
+                                        adc: &mut MiscADC, 
+                                        spi_bus: &mut impl PayloadSPI<SckIdleHigh>) -> (bool, bool, bool, bool) {
         // Short or place small resistor between pinpuller lines
         // Enable each of the four redundant lines.
         // Measure current
         // Return success if current above X mA
-        todo!();
+        let _ = pins.burn_wire_1.set_high();
+        let result1 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let _ = pins.burn_wire_1.set_low();
+
+        let _ = pins.burn_wire_1_backup.set_high();
+        let result2 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let _ = pins.burn_wire_1_backup.set_low();
+
+        let _ = pins.burn_wire_2.set_high();
+        let result3 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let _ = pins.burn_wire_2.set_low();
+
+        let _ = pins.burn_wire_2_backup.set_high();
+        let result4 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let _ = pins.burn_wire_2_backup.set_low();
+        
+        (result1, result2, result3, result4)
     }
 }
 

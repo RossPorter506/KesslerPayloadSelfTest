@@ -3,12 +3,11 @@
 
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::pcb_mapping_v5::DAC_VCC_VOLTAGE_MILLIVOLTS;
-use crate::spi::{PayloadSPI};
+use crate::pcb_mapping_v5::{DAC_VCC_VOLTAGE_MILLIVOLTS, DacCsPin};
+use crate::spi::{PayloadSPI, SckIdleLow};
 use crate::dac::{DACCommand::*, DACChannel::*};
 
 const DAC_RESOLUTION: u16 = 4095;
-use msp430fr2x5x_hal::gpio::{*};
 pub enum DACCommand{
     WriteToRegisterX=0b000,
 	UpdateRegisterX=0b0001,
@@ -30,23 +29,22 @@ pub enum DACChannel{
 }
 
 pub struct DAC {
-    pub cs_pin: Pin<P6, Pin3, Output>,
+    pub cs_pin: DacCsPin,
 }
 impl DAC{
-    pub fn new(cs_pin: Pin<P6, Pin3, Output>, spi_bus: &mut impl PayloadSPI) -> DAC {
+    pub fn new(cs_pin: DacCsPin, spi_bus: &mut impl PayloadSPI<SckIdleLow>) -> DAC {
         let mut dac = DAC{cs_pin};
         dac.init(spi_bus);
         dac
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
-                        spi_bus: &mut (impl PayloadSPI + ?Sized)) {
-        spi_bus.set_sck_idle_low();
+                        spi_bus: &mut impl PayloadSPI<SckIdleLow>) {
         self.cs_pin.set_low().ok();
         let payload: u32 = ((command as u32) << 20) | ((channel as u32) << 16) | ((value as u32) << 4);
         spi_bus.send(24, payload);
         self.cs_pin.set_high().ok();
     }
-    fn init(&mut self, spi_bus: &mut impl PayloadSPI){
+    fn init(&mut self, spi_bus: &mut impl PayloadSPI<SckIdleLow>){
         self.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
     }
     pub fn voltage_to_count(&self, mut target_voltage_millivolts: u16) -> u16{

@@ -7,9 +7,8 @@ pub const DIGIPOT_MAX_RESISTANCE: u32 = 100000;
 pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
 pub const DIGIPOT_RESOLUTION: u32 = 255;
 
-use crate::spi::PayloadSPI;
+use crate::{spi::{PayloadSPI, SckIdleLow}, pcb_mapping_v5::DigipotCsPin};
 use embedded_hal::digital::v2::OutputPin;
-use msp430fr2x5x_hal::gpio::*;
 use crate::sensors::enforce_bounds;
 
 pub enum DigipotChannel{
@@ -18,22 +17,21 @@ pub enum DigipotChannel{
 }
 
 pub struct Digipot {
-    cs_pin: Pin<P6, Pin4, Output>
+    cs_pin: DigipotCsPin,
 }
 impl Digipot {
-    pub fn new(cs_pin: Pin<P6, Pin4, Output>) -> Digipot {
+    pub fn new(cs_pin: DigipotCsPin) -> Digipot {
         Digipot {cs_pin}
     }
-    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut (impl PayloadSPI + ?Sized)){
+    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut impl PayloadSPI<SckIdleLow>){
         let count = self.resistance_to_count(wanted_resistance);
         self.set_channel_to_count(channel, count, spi_bus);
     }
-    pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut (impl PayloadSPI + ?Sized)){
+    pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<SckIdleLow>){
         let payload = ((channel as u16) << 8 + count) as u32;
-        spi_bus.set_sck_idle_low();
-        self.cs_pin.set_low().unwrap();
+        let _ = self.cs_pin.set_low();
         spi_bus.send(16, payload);
-        self.cs_pin.set_high().unwrap();
+        let _ = self.cs_pin.set_high();
     }
     pub fn resistance_to_count(&self, mut wanted_resistance: u32) -> u8{
         wanted_resistance = enforce_bounds( DIGIPOT_WIPER_RESISTANCE, 

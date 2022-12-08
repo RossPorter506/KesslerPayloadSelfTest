@@ -3,26 +3,25 @@
 
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
 
-use adc::{TetherADC,TemperatureADC,MiscADC};
+
 use digipot::Digipot;
-use embedded_hal::digital::v2::*;
+use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
+use ufmt::uwrite;
 
-mod pcb_mapping_v5;
-mod spi;
-mod dac;
-mod adc;
+mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PayloadSPIPins, PinpullerPins};
+mod spi; use spi::{PayloadSPIBitBang};
+mod dac; use dac::{DAC};
+mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot;
 mod sensors;
-mod serial;
+mod serial; use serial::SerialWriter;
 mod testing;
-use pcb_mapping_v5::{LEDPins, PayloadSPIPins};
-use sensors::{PayloadController};
-use spi::{PayloadSPIBitBang};
-use dac::DAC;
+
+use crate::{spi::SckIdleLow, };
 
 #[allow(unused_mut)]
 #[entry]
@@ -33,16 +32,24 @@ fn main() -> ! {
     let pmm = Pmm::new(periph.PMM);
 
     let port2 = Batch::new(periph.P2).split(&pmm);
+    let port3 = Batch::new(periph.P3).split(&pmm);
     let port4 = Batch::new(periph.P4).split(&pmm);
     let port5 = Batch::new(periph.P5).split(&pmm);
     let port6 = Batch::new(periph.P6).split(&pmm);
     
+    let mut pinpuller_pins = PinpullerPins{ 
+                                                burn_wire_1:        port3.pin2.to_output(),
+                                                burn_wire_1_backup: port3.pin3.to_output(),
+                                                burn_wire_2:        port5.pin0.to_output(),
+                                                burn_wire_2_backup: port5.pin1.to_output(),
+                                                pinpuller_sense:    port5.pin3.pullup(),
+                                            };
 
     let mut led_pins = LEDPins{red_led: port2.pin1.to_output(), 
                                         yellow_led: port2.pin2.to_output(), 
                                         green_led: port2.pin3.to_output()};
     
-    let mut payload_spi_bus = PayloadSPIBitBang::new(
+    let mut payload_spi_bus:PayloadSPIBitBang<SckIdleLow> = PayloadSPIBitBang::<SckIdleLow>::new_idle_low_bus(
         PayloadSPIPins{miso: port4.pin7.to_output().to_alternate1(),
                             mosi: port4.pin6.to_output().to_alternate1(),
                             sck:  port4.pin5.to_output().to_alternate1()});
@@ -53,45 +60,53 @@ fn main() -> ! {
     let mut temperature_adc = TemperatureADC::new(port6.pin0.to_output());
     let mut misc_adc = MiscADC::new(port5.pin4.to_output());
     
+    // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
+    //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
+    //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
+    //dac.send_command(dac::DACCommand::NoOp, DACChannel::ChannelA, 0x000, &mut payload_spi_bus); // Compile error! DAC expects a bus that idles low.
+    
+    
+    // Currently unused high-level interface
+    //let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot);
+
     let mut fram = Fram::new(periph.FRCTL);
     let (smclock, _aclock) = ClockConfig::new(periph.CS).mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
                                                                      .smclk_on(SmclkDiv::_1)
                                                                      .freeze(&mut fram);
-    let serial_tx = SerialConfig::new(  
+    let mut serial_tx = SerialConfig::new(  
                                 periph.E_USCI_A1,
                                 BitOrder::LsbFirst,
-                                BitCount::SevenBits,
+                                BitCount::EightBits,
                                 StopBits::OneStopBit,
-                                Parity::EvenParity,
+                                Parity::NoParity,
                                 Loopback::NoLoop,
-                                9600)
+                                115200)
                                 .use_smclk(&smclock)
                                 .tx_only(port4.pin3.to_alternate1());
 
-    let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot, &mut payload_spi_bus);
-    
-    
-    //payload.get_cathode_offset_current_milliamps();
+    let mut serial_writer = SerialWriter::new(serial_tx);
 
     let mut counter: u8 = 0;
 
     loop {
         snake_leds(&mut counter, &mut led_pins);
-        delay_cycles(15000);
+        uwrite!(serial_writer, "Hello, World!\r\n").unwrap();
+        delay_cycles(45000);
     }
 }
 
-fn delay_cycles(num_cycles: usize){ //approximate delay fn
-    for _ in 0..num_cycles/3 {
+fn delay_cycles(num_cycles: u32){ //approximate delay fn
+    let delay = num_cycles/19;
+    for _ in 0..delay {
         msp430::asm::nop()
     }
 }
 
 fn snake_leds(n: &mut u8, led_pins: &mut LEDPins){
     match n {
-        1 => led_pins.red_led.toggle().ok(),
+        1 => led_pins.green_led.toggle().ok(),
         2 => led_pins.yellow_led.toggle().ok(),
-        3 => led_pins.green_led.toggle().ok(),
+        3 => led_pins.red_led.toggle().ok(),
         _ => Some(()),
     };
     *n = (*n + 1) % 4;

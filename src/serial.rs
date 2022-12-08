@@ -3,12 +3,15 @@ use msp430fr2x5x_hal::serial::{SerialUsci, Tx};
 use ufmt::uWrite;
 use void::Void;
 
-struct SerialWriter<USCI: SerialUsci>{
+pub struct SerialWriter<USCI: SerialUsci>{
     serial: Tx<USCI>
 }
 impl<USCI: SerialUsci> SerialWriter<USCI>{
     pub fn new(serial: Tx<USCI>) -> SerialWriter<USCI> {
         SerialWriter{serial}
+    }
+    pub fn return_pin(self) -> Tx<USCI> {
+        self.serial
     }
 }
 impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
