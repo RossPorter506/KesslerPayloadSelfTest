@@ -148,11 +148,20 @@ pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
 pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
     (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
 }
-pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{
-    ((v_adc_millivolts as i32 - 1020)*1015)/19_608
-}
-pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{
+pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
+    //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
+    ((v_adc_millivolts as i32 - 1020)*50_750) / 9804
+}   
+pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{ // output in MICROamps
     ((v_adc_millivolts as i32 - 2463)*780)/500
+}
+
+pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
+    (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10_000) as u16
+}
+
+pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
+    ((v_adc_millivolts as u32 * 1000) / 1804) as u16
 }
 
 //Returns temperature in Kelvin

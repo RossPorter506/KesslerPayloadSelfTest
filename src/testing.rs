@@ -1,18 +1,21 @@
 use embedded_hal::digital::v2::OutputPin;
+use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
+use replace_with::replace_with;
 
-use crate::{spi::{PayloadSPI, IdleHigh, SampleFallingEdge}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR}};
+use crate::{spi::{PayloadSPI, IdleHigh, SampleFallingEdge, PayloadSPIBitBang, PayloadSPIBitBangConfig}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR, HEATER_VOLTAGE_SENSOR, HEATER_DIGIPOT_CHANNEL}, digipot::Digipot};
 
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
 // Functional (pass/fail) tests
-struct AutomatedFunctionalTests {}
+pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
+    // Internal function to reduce code duplication
     fn test_adc_functional<CsPin: AdcCsPin, SENSOR:ADCSensor>(  adc: &mut ADC<CsPin, SENSOR>, 
                                                                 spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>,
                                                                 wanted_channel: ADCChannel) -> bool {
         let adc_channel_msb = ((wanted_channel as u32) & 0b100) >> 2;
         let rest_of_adc_channel = (wanted_channel as u32) & 0b11;
-        let _ = adc.cs_pin.set_low();
+        adc.cs_pin.set_low().ok();
         // ADC takes four cycles to track signal. Nothing to do for first two.
         let zeroes_1 = spi_bus.receive(2);
 
@@ -31,28 +34,32 @@ impl AutomatedFunctionalTests{
         //Finally receive ADC value from the channel we care about
         spi_bus.receive(12);
 
-        let _ = adc.cs_pin.set_high();
+        adc.cs_pin.set_high().ok();
 
         zeroes_1 == 0 && zeroes_2 == 0 && zeroes_3 == 0
     }
-    // Dependencies: Isolated 5V supply, tether ADC, isolators
+
     // Ask to read channel 7.
     // Return success if SPI packet valid
+    // Dependencies: Isolated 5V supply, tether ADC, isolators
     pub fn tether_adc_functional_test(tether_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
         Self::test_adc_functional(tether_adc, spi_bus, ADCChannel::IN7)
     }
+
+    // Ask to read channel 7.
+    // Return success if SPI packet valid
     // Dependencies: temperature ADC
     pub fn temperature_adc_functional_test(temperature_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
-        // Ask to read channel 7.
-        // Return success if SPI packet valid
         Self::test_adc_functional(temperature_adc, spi_bus, ADCChannel::IN7)
     }
+
+    // Ask to read channel 7.
+    // Return success if SPI packet valid
     // Dependencies: misc ADC
     pub fn misc_adc_functional_test(misc_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
-        // Ask to read channel 7.
-        // Return success if SPI packet valid
         Self::test_adc_functional(misc_adc, spi_bus, ADCChannel::IN7)
     }
+
     // Dependencies: OBC SPI
     pub fn obc_spi_functional_test() -> bool {
         // Set interrupt on cs line(?)
@@ -69,28 +76,65 @@ impl AutomatedFunctionalTests{
         // Enable each of the four redundant lines.
         // Measure current
         // Return success if current above X mA
-        let _ = pins.burn_wire_1.set_high();
+        pins.burn_wire_1.set_high().ok();
         let result1 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
-        let _ = pins.burn_wire_1.set_low();
+        pins.burn_wire_1.set_low().ok();
 
-        let _ = pins.burn_wire_1_backup.set_high();
+        pins.burn_wire_1_backup.set_high().ok();
         let result2 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
-        let _ = pins.burn_wire_1_backup.set_low();
+        pins.burn_wire_1_backup.set_low().ok();
 
-        let _ = pins.burn_wire_2.set_high();
+        pins.burn_wire_2.set_high().ok();
         let result3 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
-        let _ = pins.burn_wire_2.set_low();
+        pins.burn_wire_2.set_low().ok();
 
-        let _ = pins.burn_wire_2_backup.set_high();
+        pins.burn_wire_2_backup.set_high().ok();
         let result4 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
-        let _ = pins.burn_wire_2_backup.set_low();
+        pins.burn_wire_2_backup.set_low().ok();
         
         (result1, result2, result3, result4)
     }
+
+    // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
+    pub fn heater_functional_test(tether_adc: &mut TetherADC, digipot: &mut Digipot, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> bool {
+        // Read heater voltage. Should be near zero.
+        let zero_count = tether_adc.read_count_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
+        // Set heater voltage to maximum.
+
+        // Temporarily take ownership of the bus to change it's typestate to talk to digipot.
+        // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the bool. Neither option is really that clean.
+        replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+            let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
+            digipot.set_channel_to_count(HEATER_DIGIPOT_CHANNEL, 0x00, &mut spi_bus_);
+            spi_bus_.into_idle_high().into_sample_falling_edge()
+        });
+        
+        // Read heater voltage. Should be near max (TODO: verify)
+        //let mut spi_bus = spi_bus.into_idle_high().into_sample_falling_edge();
+        let max_count = tether_adc.read_count_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
+        zero_count < 100 && max_count > 4000
+    }
+
+}
+
+// DO NOT USE OUTSIDE OF replace_with! WILL panic if called!
+// Make sure your replace_with call is panic-free!!
+#[allow(unreachable_code)]
+fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFallingEdge>{
+    unreachable!(); // This will panic.
+    let periph = msp430fr2355::Peripherals::take().unwrap(); 
+    let pmm = Pmm::new(periph.PMM);
+    let port4 = Batch::new(periph.P4).split(&pmm);
+    PayloadSPIBitBangConfig::new(   port4.pin7.pulldown(),
+                                    port4.pin6.to_output(),
+                                    port4.pin5.to_output(),)
+                                    .sck_idle_high()
+                                    .sample_on_falling_edge()
+                                    .create()
 }
 
 // Accuracy-based tests
-struct AutomatedPerformanceTests {}
+pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     pub fn test_cathode_offset() -> (PerformanceResult, PerformanceResult) {
@@ -111,8 +155,8 @@ impl AutomatedPerformanceTests{
         todo!();
     }
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
+    // Test configuration: 10 ohm resistor across heater+ and heater-
     pub fn test_heater() -> (PerformanceResult, PerformanceResult) {
-        // Place 10(?) ohm resistor (1W+) across heater pins
         // Set heater voltage
         // Read heater voltage, current
         // Return success if error within 10%
@@ -141,7 +185,7 @@ impl AutomatedPerformanceTests{
 
 // Tests that require human intervention during the test
 // Functional (pass/fail) tests
-struct ManualFunctionalTests{}
+pub struct ManualFunctionalTests{}
 impl ManualFunctionalTests{
     // Dependencies: endmass switches
     pub fn endmass_switches_functional_test() -> FunctionalResult {
@@ -178,7 +222,7 @@ impl ManualFunctionalTests{
 }
 
 // Accuracy-based tests
-struct ManualPerformanceTests{}
+pub struct ManualPerformanceTests{}
 impl ManualPerformanceTests{
     // Dependencies: Isolated 5V supply, Tether ADC, signal processing circuitry, isolators
     pub fn test_repeller() -> PerformanceResult {

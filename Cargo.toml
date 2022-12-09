@@ -28,6 +28,11 @@ ufmt ="0.2.0"
 #version = "0.4"
 #default-features = false
 
+[dependencies.replace_with]
+version = "0.1.7"
+default-features = false
+features = []
+
 [profile.release]
 opt-level = "s" # "z" fails to compile.
 codegen-units = 1

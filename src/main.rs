@@ -10,6 +10,7 @@ use msp430_rt::entry;
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
+use testing::AutomatedFunctionalTests;
 use ufmt::uwrite;
 
 mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerPins};
@@ -41,17 +42,12 @@ fn main() -> ! {
                                                 burn_wire_1_backup: port3.pin3.to_output(),
                                                 burn_wire_2:        port5.pin0.to_output(),
                                                 burn_wire_2_backup: port5.pin1.to_output(),
-                                                pinpuller_sense:    port5.pin3.pullup(),
-                                            };
+                                                pinpuller_sense:    port5.pin3.pullup(),};
 
     let mut led_pins = LEDPins{red_led: port2.pin1.to_output(), 
                                         yellow_led: port2.pin2.to_output(), 
                                         green_led: port2.pin3.to_output()};
     
-    /*let mut payload_spi_bus:PayloadSPIBitBang<SckIdleLow> = PayloadSPIBitBang::<SckIdleLow>::new_idle_low_bus(
-        PayloadSPIPins{miso: port4.pin7.to_output().to_alternate1(),
-                            mosi: port4.pin6.to_output().to_alternate1(),
-                            sck:  port4.pin5.to_output().to_alternate1()});*/
     let mut payload_spi_bus = PayloadSPIBitBangConfig::new( port4.pin7.pulldown(),
                                                             port4.pin6.to_output(),
                                                             port4.pin5.to_output(),)
@@ -92,6 +88,10 @@ fn main() -> ! {
     let mut serial_writer = SerialWriter::new(serial_tx);
 
     let mut counter: u8 = 0;
+
+    let mut payload_spi_bus = payload_spi_bus.into_idle_high().into_sample_falling_edge();
+
+    //AutomatedFunctionalTests::heater_functional_test(&mut tether_adc, &mut digipot, &mut payload_spi_bus);
 
     loop {
         snake_leds(&mut counter, &mut led_pins);
