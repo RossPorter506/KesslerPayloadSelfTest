@@ -3,7 +3,7 @@
 
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::pcb_mapping_v5::{DAC_VCC_VOLTAGE_MILLIVOLTS, DacCsPin};
+use crate::pcb_mapping_v5::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, DacCsPin};
 use crate::spi::{PayloadSPI, IdleLow, SampleRisingEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 

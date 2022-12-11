@@ -4,7 +4,7 @@ use crate::digipot::Digipot;
 use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC};
 use crate::dac::{DAC, DACCommand};
 use crate::spi::{PayloadSPI, IdleHigh,SampleFallingEdge, IdleLow, SampleRisingEdge};
-use crate::pcb_mapping_v5::*;
+use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*};
 
 // Returns num such that "lower bound <= num <= upper_bound"
 pub fn enforce_bounds<T: PartialOrd>(lower_bound: T, mut num: T, upper_bound: T) -> T{
@@ -76,7 +76,7 @@ impl PayloadController{
         let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_VOLTAGE_SENSOR, spi_bus);
         tether_bias_voltage_eq(adc_voltage)
     }
-    pub fn get_tether_bias_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> i32 {
+    pub fn get_tether_bias_current_microamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> i32 {
         let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_CURRENT_SENSOR, spi_bus);
         tether_bias_current_eq(adc_voltage)
     }
@@ -94,7 +94,7 @@ impl PayloadController{
         let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_VOLTAGE_SENSOR, spi_bus);
         cathode_offset_voltage_eq(adc_voltage)
     }
-    pub fn get_cathode_offset_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> i32 {
+    pub fn get_cathode_offset_current_microamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> i32 {
         let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_CURRENT_SENSOR, spi_bus);
         cathode_offset_current_eq(adc_voltage)
     }

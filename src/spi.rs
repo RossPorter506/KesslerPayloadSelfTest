@@ -280,7 +280,7 @@ impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleRisingEdge>{
         PayloadSPIBitBang::<Polarity, SampleFallingEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
-// Actual implementations
+// Actual trait implementations
 impl PayloadSPI<IdleHigh, SampleRisingEdge> for PayloadSPIBitBang<IdleHigh, SampleRisingEdge> {
     fn send(&mut self, len: u8, data: u32) { self.send_on_first_edge(len, data) }
     fn receive(&mut self, len: u8) -> u32  { self.receive_on_second_edge(len) }

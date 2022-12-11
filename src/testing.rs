@@ -2,8 +2,10 @@ use embedded_hal::digital::v2::OutputPin;
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use replace_with::replace_with;
 
-use crate::{spi::{PayloadSPI, IdleHigh, SampleFallingEdge, PayloadSPIBitBang, PayloadSPIBitBangConfig}, adc::{TetherADC, ADCChannel, ADC, ADCSensor, MiscADC}, pcb_mapping_v5::{PinpullerPins, AdcCsPin, PINPULLER_CURRENT_SENSOR, HEATER_VOLTAGE_SENSOR, HEATER_DIGIPOT_CHANNEL}, digipot::Digipot};
-
+use crate::delay_cycles;
+use crate::sensors::PayloadController;
+use crate::{spi::*, adc::*, digipot::*, dac::*};
+use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, power_supply_equations::*, *};
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
 // Functional (pass/fail) tests
@@ -104,13 +106,12 @@ impl AutomatedFunctionalTests{
         // Temporarily take ownership of the bus to change it's typestate to talk to digipot.
         // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the bool. Neither option is really that clean.
         replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
-            let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
-            digipot.set_channel_to_count(HEATER_DIGIPOT_CHANNEL, 0x00, &mut spi_bus_);
-            spi_bus_.into_idle_high().into_sample_falling_edge()
+            let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge(); //configure bus for digipot
+            digipot.set_channel_to_count(HEATER_DIGIPOT_CHANNEL, 0x00, &mut spi_bus_); // read digipot
+            spi_bus_.into_idle_high().into_sample_falling_edge() //return bus
         });
         
         // Read heater voltage. Should be near max (TODO: verify)
-        //let mut spi_bus = spi_bus.into_idle_high().into_sample_falling_edge();
         let max_count = tether_adc.read_count_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
         zero_count < 100 && max_count > 4000
     }
@@ -133,27 +134,170 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFallingEdge>{
                                     .create()
 }
 
+fn calculate_accuracy<T: Copy + Into<f64>>(measured:T, actual:T) -> f64 {
+    libm::fabs(measured.into() - actual.into() / actual.into())
+}
+fn average<T: Copy + Into<f64>>(arr:&[T]) -> f64 {
+    let mut cumulative_avg: f64 = 0.0;
+    for (i, num) in arr.iter().enumerate() {
+        cumulative_avg += ((*num).into() - cumulative_avg) / ((i+1) as f64);
+    }
+    cumulative_avg
+}
+
 // Accuracy-based tests
 pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
-    pub fn test_cathode_offset() -> (PerformanceResult, PerformanceResult) {
-        // Set cathode voltage
-        // Read cathode voltage 
-        // Read cathode current (setup TBD)
-        // Calculate expected voltage and current
-        // Return success if closed loop error within 10%
-        todo!();
+    pub fn test_cathode_offset(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+        const NUM_MEASUREMENTS: usize = 10;
+        let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+        let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+
+        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
+            let output_fraction =  output_percentage as f32 * 0.01;
+            let output_voltage = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+
+            // Set cathode voltage
+            replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+                let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
+                payload.set_cathode_offset_voltage(output_voltage, &mut spi_bus_);
+                spi_bus_.into_idle_high().into_sample_falling_edge()
+            });
+            delay_cycles(100_000); //settling time
+            
+            // Read cathode voltage 
+            let cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
+
+            // Read cathode current (setup TBD)
+            let cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
+
+            // Calculate expected voltage and current
+            let expected_voltage:i32 = output_voltage as i32;
+            let expected_current:i32 = todo!();
+
+            voltage_accuracy_measurements[i] = calculate_accuracy(cathode_offset_voltage_mv, expected_voltage);
+            current_accuracy_measurements[i] = calculate_accuracy(cathode_offset_current_ua, expected_current as i32);
+        }
+
+        let voltage_accuracy = average(&voltage_accuracy_measurements);
+        let current_accuracy = average(&current_accuracy_measurements);
+
+        let voltage_result = match voltage_accuracy {
+            x if x > 0.95 => PerformanceResult::Success(voltage_accuracy),
+            x if x > 0.80 => PerformanceResult::Inaccurate(voltage_accuracy),
+            _                  => PerformanceResult::NotWorking(voltage_accuracy),
+        };
+        let current_result = match current_accuracy {
+            x if x > 0.95 => PerformanceResult::Success(current_accuracy),
+            x if x > 0.80 => PerformanceResult::Inaccurate(current_accuracy),
+            _                  => PerformanceResult::NotWorking(current_accuracy),
+        };
+
+        (voltage_result, current_result)
     }
+    // Almost identical code, feels bad man
     // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
-    pub fn test_tether_bias() -> (PerformanceResult, PerformanceResult) {
-        // Set cathode voltage
-        // Read cathode voltage 
-        // Read cathode current (setup TBD)
-        // Calculate expected voltage and current
-        // Return success if closed loop error within 10%
-        todo!();
+    pub fn test_tether_bias(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+        const NUM_MEASUREMENTS: usize = 10;
+        let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+        let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+
+        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
+            let output_fraction =  output_percentage as f32 * 0.01;
+            let output_voltage = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+
+            // Set cathode voltage
+            replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+                let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
+                payload.set_tether_bias_voltage(output_voltage, &mut spi_bus_);
+                spi_bus_.into_idle_high().into_sample_falling_edge()
+            });
+            delay_cycles(100_000); //settling time
+            
+            // Read cathode voltage 
+            let tether_bias_voltage_mv = payload.get_tether_bias_voltage_millivolts(spi_bus);
+
+            // Read cathode current (setup TBD)
+            let tether_bias_current_ua = payload.get_tether_bias_current_microamps(spi_bus);
+
+            // Calculate expected voltage and current
+            let expected_voltage:i32 = output_voltage as i32;
+            let expected_current:i32 = todo!();
+
+            voltage_accuracy_measurements[i] = calculate_accuracy(tether_bias_voltage_mv, expected_voltage);
+            current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current as i32);
+        }
+
+        let voltage_accuracy = average(&voltage_accuracy_measurements);
+        let current_accuracy = average(&current_accuracy_measurements);
+
+        let voltage_result = match voltage_accuracy {
+            x if x > 0.95 => PerformanceResult::Success(voltage_accuracy),
+            x if x > 0.80 => PerformanceResult::Inaccurate(voltage_accuracy),
+            _                  => PerformanceResult::NotWorking(voltage_accuracy),
+        };
+        let current_result = match current_accuracy {
+            x if x > 0.95 => PerformanceResult::Success(current_accuracy),
+            x if x > 0.80 => PerformanceResult::Inaccurate(current_accuracy),
+            _                  => PerformanceResult::NotWorking(current_accuracy),
+        };
+
+        (voltage_result, current_result)
     }
+    // Generic version, couldn't get working due to overlapping borrows of 'payload'
+    /*fn test_generic_voltage_current(supply_max: u32, supply_min: u32, success_threshhold: f64, inaccurate_threshhold: f64,
+                                    read_voltage_fn: &dyn Fn(&mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> i32,
+                                    read_current_fn: &dyn Fn(&mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> i32,
+                                    set_voltage_fn:  &dyn Fn(u32, &mut PayloadSPIBitBang<IdleLow, SampleRisingEdge>),
+                                    calculate_current_fn: &dyn Fn(i32) -> i32,
+                                    spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+        const NUM_MEASUREMENTS: usize = 10;
+        let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+        let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+
+        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
+            let output_fraction =  output_percentage as f32 * 0.01;
+            let output_voltage = ((supply_max - supply_min) as f32 * output_fraction) as u32;
+
+            // Set cathode voltage
+            replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+                let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
+                set_voltage_fn(output_voltage, &mut spi_bus_);
+                spi_bus_.into_idle_high().into_sample_falling_edge()
+            });
+            delay_cycles(100_000); //settling time
+            
+            // Read cathode voltage 
+            let tether_bias_voltage_mv = read_voltage_fn(spi_bus);
+
+            // Read cathode current (setup TBD)
+            let tether_bias_current_ua = read_current_fn(spi_bus);
+
+            // Calculate expected voltage and current
+            let expected_voltage: i32 = output_voltage as i32;
+            let expected_current: i32 = calculate_current_fn(output_voltage as i32);
+
+            voltage_accuracy_measurements[i] = calculate_accuracy(tether_bias_voltage_mv, expected_voltage);
+            current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current as i32);
+        }
+
+        let voltage_accuracy = average(&voltage_accuracy_measurements);
+        let current_accuracy = average(&current_accuracy_measurements);
+
+        let voltage_result = match voltage_accuracy {
+            x if x > success_threshhold     => PerformanceResult::Success(voltage_accuracy),
+            x if x > inaccurate_threshhold => PerformanceResult::Inaccurate(voltage_accuracy),
+            _                                   => PerformanceResult::NotWorking(voltage_accuracy),
+        };
+        let current_result = match current_accuracy {
+            x if x > success_threshhold    => PerformanceResult::Success(current_accuracy),
+            x if x > inaccurate_threshhold => PerformanceResult::Inaccurate(current_accuracy),
+            _                                   => PerformanceResult::NotWorking(current_accuracy),
+        };
+
+        (voltage_result, current_result)
+    }*/
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
     pub fn test_heater() -> (PerformanceResult, PerformanceResult) {
@@ -280,9 +424,9 @@ impl ManualPerformanceTests{
 }
 
 pub enum PerformanceResult{
-    Success(f32), // accuracy error in %
-    Inaccurate(f32),
-    NotWorking(f32),
+    Success(f64), // accuracy error in %
+    Inaccurate(f64),
+    NotWorking(f64),
 }
 
 // Nice names for bool values

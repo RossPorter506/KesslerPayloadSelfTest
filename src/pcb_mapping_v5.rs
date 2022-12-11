@@ -1,10 +1,7 @@
 // This file acts as an abstraction layer for PCB-specific values that may change between revisions.
 
 use embedded_hal::digital::v2::OutputPin;
-use libm::log;
 use msp430fr2x5x_hal::gpio::*;
-
-use crate::{adc::{TetherSensor, ADCChannel, TemperatureSensor, MiscSensor}, dac::DACChannel, digipot::DigipotChannel};
 
 pub struct LEDPins{
     pub red_led: Pin<P2, Pin1, Output>,
@@ -20,12 +17,12 @@ pub struct PayloadSPIChipSelectPins{
     pub misc_adc:       Pin<P5, Pin4, Output>, //ADC0, measures everything else
 }
 // Shorthand for CS pins. Used by peripherals to remain generic against different PCB versions
+pub trait AdcCsPin: OutputPin{}
 pub type DigipotCsPin =         Pin<P6, Pin4, Output>; impl AdcCsPin for DigipotCsPin{}
 pub type DacCsPin =             Pin<P6, Pin3, Output>; impl AdcCsPin for DacCsPin{}
 pub type TetherAdcCsPin =       Pin<P6, Pin2, Output>; impl AdcCsPin for TetherAdcCsPin{}
 pub type TemperatureAdcCsPin =  Pin<P6, Pin0, Output>; impl AdcCsPin for TemperatureAdcCsPin{}
 pub type MiscAdcCsPin =         Pin<P5, Pin4, Output>; impl AdcCsPin for MiscAdcCsPin{}
-pub trait AdcCsPin: OutputPin{}
 
 //eUSCI_B1
 pub struct PayloadSPIPins{
@@ -80,109 +77,119 @@ pub struct PinpullerPins{
     pub pinpuller_sense:    Pin<P5, Pin3, Input<Pullup>>,
 }
 
-// Maximum and minimum values producable by controllable power supplies
-pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 12000;
-pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 1400;
+pub mod power_supply_limits {
+    // Maximum and minimum values producable by controllable power supplies
+    pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 12000;
+    pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 1400;
 
-pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
-pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
+    pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
+    pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
 
-pub const TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
-pub const TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
-
-// VCC Supply voltages
-pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
-pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
-pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
-
+    pub const TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
+    pub const TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
+}
+pub mod peripheral_vcc_values {
+    // VCC Supply voltages
+    pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
+    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
+    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
+}
 
 /********** Sensor mappings **********/
-// Tether ADC
-pub const REPELLER_VOLTAGE_SENSOR: TetherSensor =       TetherSensor{channel: ADCChannel::IN0};
-pub const HEATER_VOLTAGE_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN1};
-/*                                                                  Nothing on channel 2     */
-pub const HEATER_CURRENT_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN3};
-pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN4};
-pub const TETHER_BIAS_CURRENT_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN5};
-pub const TETHER_BIAS_VOLTAGE_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN6};
-pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
+pub mod sensor_locations {
+    use crate::{adc::*};
+    // Tether ADC
+    pub const REPELLER_VOLTAGE_SENSOR: TetherSensor =       TetherSensor{channel: ADCChannel::IN0};
+    pub const HEATER_VOLTAGE_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN1};
+    /*                                                                  Nothing on channel 2     */
+    pub const HEATER_CURRENT_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN3};
+    pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN4};
+    pub const TETHER_BIAS_CURRENT_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN5};
+    pub const TETHER_BIAS_VOLTAGE_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN6};
+    pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
 
-//Temperature ADC
-pub const LMS_EMITTER_TEMPERATURE_SENSOR: TemperatureSensor =       TemperatureSensor{channel: ADCChannel::IN0};
-pub const LMS_RECEIVER_TEMPERATURE_SENSOR: TemperatureSensor =      TemperatureSensor{channel: ADCChannel::IN1};
-pub const MSP430_TEMPERATURE_SENSOR: TemperatureSensor =            TemperatureSensor{channel: ADCChannel::IN2};
-pub const HEATER_SUPPLY_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN3};
-pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN4};
-pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5};
-pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR: TemperatureSensor =  TemperatureSensor{channel: ADCChannel::IN6};
-pub const MSP_3V3_TEMPERATURE_SENSOR: TemperatureSensor =           TemperatureSensor{channel: ADCChannel::IN7};
+    //Temperature ADC
+    pub const LMS_EMITTER_TEMPERATURE_SENSOR: TemperatureSensor =       TemperatureSensor{channel: ADCChannel::IN0};
+    pub const LMS_RECEIVER_TEMPERATURE_SENSOR: TemperatureSensor =      TemperatureSensor{channel: ADCChannel::IN1};
+    pub const MSP430_TEMPERATURE_SENSOR: TemperatureSensor =            TemperatureSensor{channel: ADCChannel::IN2};
+    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN3};
+    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN4};
+    pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5};
+    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR: TemperatureSensor =  TemperatureSensor{channel: ADCChannel::IN6};
+    pub const MSP_3V3_TEMPERATURE_SENSOR: TemperatureSensor =           TemperatureSensor{channel: ADCChannel::IN7};
 
-// Misc ADC
-pub const PINPULLER_CURRENT_SENSOR: MiscSensor =    MiscSensor{channel: ADCChannel::IN0};
-pub const LMS_RECEIVER_1_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN1};
-pub const LMS_RECEIVER_2_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN2};
-pub const LMS_RECEIVER_3_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN3};
-pub const APERTURE_CURRENT_SENSOR: MiscSensor =     MiscSensor{channel: ADCChannel::IN4};
+    // Misc ADC
+    pub const PINPULLER_CURRENT_SENSOR: MiscSensor =    MiscSensor{channel: ADCChannel::IN0};
+    pub const LMS_RECEIVER_1_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN1};
+    pub const LMS_RECEIVER_2_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN2};
+    pub const LMS_RECEIVER_3_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN3};
+    pub const APERTURE_CURRENT_SENSOR: MiscSensor =     MiscSensor{channel: ADCChannel::IN4};
+}
+pub mod power_supply_locations {
+    use crate::{dac::*, digipot::*};
+    // DAC
+    pub const CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL: DACChannel = DACChannel::ChannelC;
+    pub const TETHER_BIAS_SUPPLY_CONTROL_CHANNEL: DACChannel = DACChannel::ChannelD;
 
-// DAC
-pub const CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL: DACChannel = DACChannel::ChannelC;
-pub const TETHER_BIAS_SUPPLY_CONTROL_CHANNEL: DACChannel = DACChannel::ChannelD;
-
-//Digipot
-pub const HEATER_DIGIPOT_CHANNEL: DigipotChannel = DigipotChannel::Channel1;
-
+    // Digipot
+    pub const HEATER_DIGIPOT_CHANNEL: DigipotChannel = DigipotChannel::Channel1;
+}
 /* Sensor equations. Takes in the voltage reported at the ADC (in millivolts) and produces the voltage/current being sensed in millivolts/milliamps */
 
-pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
-    ((v_adc_millivolts as i32 * 1035)/310) as u16
-}
-pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32{
-    (v_adc_millivolts as i32 - 2755)*102
-}
-pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32{
-    (v_adc_millivolts as i32 * 106)+805
-}
-pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
-    ((v_adc_millivolts as i32 * -86_463)/1000)+301_437
-}
-pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
-    (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
-}
-pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
-    //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
-    ((v_adc_millivolts as i32 - 1020)*50_750) / 9804
-}   
-pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{ // output in MICROamps
-    ((v_adc_millivolts as i32 - 2463)*780)/500
-}
+pub mod sensor_equations {
+    pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
+        ((v_adc_millivolts as i32 * 1035)/310) as u16
+    }
+    pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32{
+        (v_adc_millivolts as i32 - 2755)*102
+    }
+    pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32{
+        (v_adc_millivolts as i32 * 106)+805
+    }
+    pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
+        ((v_adc_millivolts as i32 * -86_463)/1000)+301_437
+    }
+    pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
+        (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
+    }
+    pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
+        //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
+        ((v_adc_millivolts as i32 - 1020)*50_750) / 9804
+    }   
+    pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{ // output in MICROamps
+        ((v_adc_millivolts as i32 - 2463)*780)/500
+    }
 
-pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-    (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10_000) as u16
-}
+    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
+        (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10_000) as u16
+    }
 
-pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-    ((v_adc_millivolts as u32 * 1000) / 1804) as u16
-}
+    pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
+        ((v_adc_millivolts as u32 * 1000) / 1804) as u16
+    }
 
-//Returns temperature in Kelvin
-pub fn payload_temperature_eq(v_adc_millivolts: u16) -> u16 {
-    let log_millivolts = log(v_adc_millivolts as f64) as f32;
-    (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(5000.0-log_millivolts) )) as u16
-}
-pub fn lms_temperature_eq(v_adc_millivolts: u16) -> u16 {
-    let log_millivolts = log(v_adc_millivolts as f64) as f32;
-    (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(3300.0-log_millivolts) )) as u16
-}
+    use libm::log;
 
+    //Returns temperature in Kelvin
+    pub fn payload_temperature_eq(v_adc_millivolts: u16) -> u16 {
+        let log_millivolts = log(v_adc_millivolts as f64) as f32;
+        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(5000.0-log_millivolts) )) as u16
+    }
+    pub fn lms_temperature_eq(v_adc_millivolts: u16) -> u16 {
+        let log_millivolts = log(v_adc_millivolts as f64) as f32;
+        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(3300.0-log_millivolts) )) as u16
+    }
+}
 /* Supply control equations */
+pub mod power_supply_equations {
+    pub fn heater_target_voltage_to_digipot_resistance(millivolts: f32) -> u32{
+        (75_000.0 / ((millivolts)/810.0 - 1.0)) as u32
+    }
 
-pub fn heater_target_voltage_to_digipot_resistance(millivolts: f32) -> u32{
-    (75_000.0 / ((millivolts)/810.0 - 1.0)) as u32
-}
-
-pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-    (millivolts / 51) as u16
-}
-pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-    ((millivolts * 100) / 5138) as u16
+    pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
+        (millivolts / 51) as u16
+    }
+    pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
+        ((millivolts * 100) / 5138) as u16
+    }
 }

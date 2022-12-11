@@ -6,7 +6,7 @@ use no_std_compat::marker::PhantomData;
 
 use crate::spi::{IdleHigh, SampleFallingEdge};
 use crate::{spi::PayloadSPI};
-use crate::pcb_mapping_v5::{ADC_VCC_VOLTAGE_MILLIVOLTS, ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS, AdcCsPin, TetherAdcCsPin, TemperatureAdcCsPin, MiscAdcCsPin};
+use crate::pcb_mapping_v5::{peripheral_vcc_values::*, AdcCsPin, TetherAdcCsPin, TemperatureAdcCsPin, MiscAdcCsPin};
 
 #[derive(PartialEq)]
 pub enum TargetADC {
