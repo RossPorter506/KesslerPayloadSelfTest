@@ -10,7 +10,8 @@ use msp430_rt::entry;
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
-use testing::AutomatedFunctionalTests;
+use sensors::PayloadController;
+use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
 use ufmt::uwrite;
 
 mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerPins};
@@ -65,10 +66,6 @@ fn main() -> ! {
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
     //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
     //dac.send_command(dac::DACCommand::NoOp, DACChannel::ChannelA, 0x000, &mut payload_spi_bus); // Compile error! DAC expects a bus that idles low.
-    
-    
-    // Currently unused high-level interface
-    //let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot);
 
     let mut fram = Fram::new(periph.FRCTL);
     let (smclock, _aclock) = ClockConfig::new(periph.CS).mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
@@ -89,9 +86,12 @@ fn main() -> ! {
 
     let mut counter: u8 = 0;
 
+    let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot);
+
     let mut payload_spi_bus = payload_spi_bus.into_idle_high().into_sample_falling_edge();
 
     //AutomatedFunctionalTests::heater_functional_test(&mut tether_adc, &mut digipot, &mut payload_spi_bus);
+    AutomatedPerformanceTests::test_pinpuller_current_sensor(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus);
 
     loop {
         snake_leds(&mut counter, &mut led_pins);

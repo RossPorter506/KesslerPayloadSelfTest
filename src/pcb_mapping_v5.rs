@@ -93,37 +93,39 @@ pub mod peripheral_vcc_values {
     pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
     pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
     pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
+    pub const PINPULLER_VOLTAGE_MILLIVOLTS: u16 = 3300; // TODO verify
 }
 
 /********** Sensor mappings **********/
 pub mod sensor_locations {
     use crate::{adc::*};
     // Tether ADC
-    pub const REPELLER_VOLTAGE_SENSOR: TetherSensor =       TetherSensor{channel: ADCChannel::IN0};
-    pub const HEATER_VOLTAGE_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN1};
-    /*                                                                  Nothing on channel 2     */
-    pub const HEATER_CURRENT_SENSOR: TetherSensor =         TetherSensor{channel: ADCChannel::IN3};
+    pub const REPELLER_VOLTAGE_SENSOR:       TetherSensor = TetherSensor{channel: ADCChannel::IN0};
+    pub const HEATER_VOLTAGE_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN1};
+    /**********                             Nothing on channel 2                        **********/
+    pub const HEATER_CURRENT_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN3};
     pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN4};
-    pub const TETHER_BIAS_CURRENT_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN5};
-    pub const TETHER_BIAS_VOLTAGE_SENSOR: TetherSensor =    TetherSensor{channel: ADCChannel::IN6};
+    pub const TETHER_BIAS_CURRENT_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN5};
+    pub const TETHER_BIAS_VOLTAGE_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN6};
     pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
 
     //Temperature ADC
-    pub const LMS_EMITTER_TEMPERATURE_SENSOR: TemperatureSensor =       TemperatureSensor{channel: ADCChannel::IN0};
-    pub const LMS_RECEIVER_TEMPERATURE_SENSOR: TemperatureSensor =      TemperatureSensor{channel: ADCChannel::IN1};
-    pub const MSP430_TEMPERATURE_SENSOR: TemperatureSensor =            TemperatureSensor{channel: ADCChannel::IN2};
-    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN3};
-    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR: TemperatureSensor =     TemperatureSensor{channel: ADCChannel::IN4};
+    pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0};
+    pub const LMS_RECEIVER_TEMPERATURE_SENSOR:      TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN1};
+    pub const MSP430_TEMPERATURE_SENSOR:            TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN2};
+    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN3};
+    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN4};
     pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5};
-    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR: TemperatureSensor =  TemperatureSensor{channel: ADCChannel::IN6};
-    pub const MSP_3V3_TEMPERATURE_SENSOR: TemperatureSensor =           TemperatureSensor{channel: ADCChannel::IN7};
+    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR:  TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN6};
+    pub const MSP_3V3_TEMPERATURE_SENSOR:           TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN7};
 
     // Misc ADC
-    pub const PINPULLER_CURRENT_SENSOR: MiscSensor =    MiscSensor{channel: ADCChannel::IN0};
-    pub const LMS_RECEIVER_1_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN1};
-    pub const LMS_RECEIVER_2_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN2};
-    pub const LMS_RECEIVER_3_SENSOR: MiscSensor =       MiscSensor{channel: ADCChannel::IN3};
-    pub const APERTURE_CURRENT_SENSOR: MiscSensor =     MiscSensor{channel: ADCChannel::IN4};
+    pub const PINPULLER_CURRENT_SENSOR: MiscSensor = MiscSensor{channel: ADCChannel::IN0};
+    pub const LMS_RECEIVER_1_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN1};
+    pub const LMS_RECEIVER_2_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN2};
+    pub const LMS_RECEIVER_3_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN3};
+    pub const APERTURE_CURRENT_SENSOR:  MiscSensor = MiscSensor{channel: ADCChannel::IN4};
+    /**********                    Nothing after channel 4                     **********/
 }
 pub mod power_supply_locations {
     use crate::{dac::*, digipot::*};
@@ -172,12 +174,14 @@ pub mod sensor_equations {
 
     //Returns temperature in Kelvin
     pub fn payload_temperature_eq(v_adc_millivolts: u16) -> u16 {
-        let log_millivolts = log(v_adc_millivolts as f64) as f32;
-        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(5000.0-log_millivolts) )) as u16
+        generic_temperature_eq(v_adc_millivolts, 5000.0)
     }
     pub fn lms_temperature_eq(v_adc_millivolts: u16) -> u16 {
+        generic_temperature_eq(v_adc_millivolts, 3300.0)
+    }
+    fn generic_temperature_eq(v_adc_millivolts: u16, vcc: f32) -> u16 {
         let log_millivolts = log(v_adc_millivolts as f64) as f32;
-        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(3300.0-log_millivolts) )) as u16
+        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(vcc-log_millivolts) )) as u16
     }
 }
 /* Supply control equations */

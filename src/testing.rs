@@ -5,7 +5,8 @@ use replace_with::replace_with;
 use crate::delay_cycles;
 use crate::sensors::PayloadController;
 use crate::{spi::*, adc::*, digipot::*, dac::*};
-use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, power_supply_equations::*, *};
+use crate::pcb_mapping_v5::{sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
+
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
 // Functional (pass/fail) tests
@@ -71,27 +72,32 @@ impl AutomatedFunctionalTests{
         todo!();
     }
     // Dependencies: pinpuller, pinpuller current sensor, misc ADC
+    // Setup: Place x ohm resistor between pinpuller 
     pub fn pinpuller_functional_test(   pins: &mut PinpullerPins, 
-                                        adc: &mut MiscADC, 
+                                        payload: &mut PayloadController,
                                         spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> (bool, bool, bool, bool) {
-        // Short or place small resistor between pinpuller lines
+        const ON_MILLIAMP_THRESHOLD: u16 = 1000; // TODO: Figure out threshhold
+        
         // Enable each of the four redundant lines.
         // Measure current
         // Return success if current above X mA
         pins.burn_wire_1.set_high().ok();
-        let result1 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let result1 = payload.get_pinpuller_current_milliamps(spi_bus) > ON_MILLIAMP_THRESHOLD;
         pins.burn_wire_1.set_low().ok();
+        delay_cycles(1000);
 
         pins.burn_wire_1_backup.set_high().ok();
-        let result2 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let result2 = payload.get_pinpuller_current_milliamps(spi_bus) > ON_MILLIAMP_THRESHOLD;
         pins.burn_wire_1_backup.set_low().ok();
+        delay_cycles(1000);
 
         pins.burn_wire_2.set_high().ok();
-        let result3 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let result3 = payload.get_pinpuller_current_milliamps(spi_bus) > ON_MILLIAMP_THRESHOLD;
         pins.burn_wire_2.set_low().ok();
+        delay_cycles(1000);
 
         pins.burn_wire_2_backup.set_high().ok();
-        let result4 = adc.read_count_from(&PINPULLER_CURRENT_SENSOR, spi_bus) > 1000; // TODO: Figure out threshhold
+        let result4 = payload.get_pinpuller_current_milliamps(spi_bus) > ON_MILLIAMP_THRESHOLD;
         pins.burn_wire_2_backup.set_low().ok();
         
         (result1, result2, result3, result4)
@@ -137,12 +143,20 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFallingEdge>{
 fn calculate_accuracy<T: Copy + Into<f64>>(measured:T, actual:T) -> f64 {
     libm::fabs(measured.into() - actual.into() / actual.into())
 }
-fn average<T: Copy + Into<f64>>(arr:&[T]) -> f64 {
+fn average<T: Copy + Into<f64>>(arr: &[T]) -> f64 {
     let mut cumulative_avg: f64 = 0.0;
     for (i, num) in arr.iter().enumerate() {
         cumulative_avg += ((*num).into() - cumulative_avg) / ((i+1) as f64);
     }
     cumulative_avg
+}
+fn calculate_performance_result(arr: &[f64], success_threshhold: f64, inaccurate_threshhold: f64) -> PerformanceResult {
+    let acc = average(arr);
+
+    match acc {
+    x if x > success_threshhold    => PerformanceResult::Success(acc),
+    x if x > inaccurate_threshhold => PerformanceResult::Inaccurate(acc),
+                                      _ => PerformanceResult::NotWorking(acc),}
 }
 
 // Accuracy-based tests
@@ -154,7 +168,7 @@ impl AutomatedPerformanceTests{
         let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
         let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
 
-        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
+        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_fraction =  output_percentage as f32 * 0.01;
             let output_voltage = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
 
@@ -180,20 +194,8 @@ impl AutomatedPerformanceTests{
             current_accuracy_measurements[i] = calculate_accuracy(cathode_offset_current_ua, expected_current as i32);
         }
 
-        let voltage_accuracy = average(&voltage_accuracy_measurements);
-        let current_accuracy = average(&current_accuracy_measurements);
-
-        let voltage_result = match voltage_accuracy {
-            x if x > 0.95 => PerformanceResult::Success(voltage_accuracy),
-            x if x > 0.80 => PerformanceResult::Inaccurate(voltage_accuracy),
-            _                  => PerformanceResult::NotWorking(voltage_accuracy),
-        };
-        let current_result = match current_accuracy {
-            x if x > 0.95 => PerformanceResult::Success(current_accuracy),
-            x if x > 0.80 => PerformanceResult::Inaccurate(current_accuracy),
-            _                  => PerformanceResult::NotWorking(current_accuracy),
-        };
-
+        let voltage_result = calculate_performance_result(&voltage_accuracy_measurements, 0.95, 0.8);
+        let current_result = calculate_performance_result(&current_accuracy_measurements, 0.95, 0.8);
         (voltage_result, current_result)
     }
     // Almost identical code, feels bad man
@@ -203,7 +205,7 @@ impl AutomatedPerformanceTests{
         let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
         let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
 
-        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
+        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_fraction =  output_percentage as f32 * 0.01;
             let output_voltage = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
 
@@ -229,23 +231,11 @@ impl AutomatedPerformanceTests{
             current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current as i32);
         }
 
-        let voltage_accuracy = average(&voltage_accuracy_measurements);
-        let current_accuracy = average(&current_accuracy_measurements);
-
-        let voltage_result = match voltage_accuracy {
-            x if x > 0.95 => PerformanceResult::Success(voltage_accuracy),
-            x if x > 0.80 => PerformanceResult::Inaccurate(voltage_accuracy),
-            _                  => PerformanceResult::NotWorking(voltage_accuracy),
-        };
-        let current_result = match current_accuracy {
-            x if x > 0.95 => PerformanceResult::Success(current_accuracy),
-            x if x > 0.80 => PerformanceResult::Inaccurate(current_accuracy),
-            _                  => PerformanceResult::NotWorking(current_accuracy),
-        };
-
+        let voltage_result = calculate_performance_result(&voltage_accuracy_measurements, 0.95, 0.8);
+        let current_result = calculate_performance_result(&current_accuracy_measurements, 0.95, 0.8);
         (voltage_result, current_result)
     }
-    // Generic version, couldn't get working due to overlapping borrows of 'payload'
+    // Generic version, couldn't get working due to overlapping borrows for function pointers
     /*fn test_generic_voltage_current(supply_max: u32, supply_min: u32, success_threshhold: f64, inaccurate_threshhold: f64,
                                     read_voltage_fn: &dyn Fn(&mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> i32,
                                     read_current_fn: &dyn Fn(&mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> i32,
@@ -260,7 +250,7 @@ impl AutomatedPerformanceTests{
             let output_fraction =  output_percentage as f32 * 0.01;
             let output_voltage = ((supply_max - supply_min) as f32 * output_fraction) as u32;
 
-            // Set cathode voltage
+            // Set voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
                 set_voltage_fn(output_voltage, &mut spi_bus_);
@@ -300,20 +290,82 @@ impl AutomatedPerformanceTests{
     }*/
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
-    pub fn test_heater() -> (PerformanceResult, PerformanceResult) {
-        // Set heater voltage
-        // Read heater voltage, current
-        // Return success if error within 10%
-        todo!();
+    pub fn test_heater(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+        const NUM_MEASUREMENTS: usize = 10;
+        const HEATER_RESISTANCE: f32 = 10.0 + 0.01;
+        const HEATER_MAX_POWER: f32 = 1.0;
+        const MAXIMUM_ON_CURRENT: f32 = HEATER_MAX_VOLTAGE_MILLIVOLTS as f32 / HEATER_RESISTANCE; 
+        let heater_power_limited_max_current: f64 = 1000.0 * libm::sqrt((HEATER_MAX_POWER / HEATER_RESISTANCE) as f64);
+        let mut voltage_accuracy_measurements: [f64; NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+        let mut current_accuracy_measurements: [f64; NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+
+        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_fraction =  output_percentage as f32 * 0.01;
+            let output_voltage = ((HEATER_MAX_VOLTAGE_MILLIVOLTS - HEATER_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u16;
+
+            // Set cathode voltage
+            replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+                let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
+                payload.set_heater_voltage(output_voltage, &mut spi_bus_);
+                spi_bus_.into_idle_high().into_sample_falling_edge()
+            });
+            delay_cycles(100_000); //settling time
+            
+            // Read voltage 
+            let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+
+            // Read current (setup TBD)
+            let heater_current_ma = payload.get_heater_current_milliamps(spi_bus);
+
+            // Calculate expected voltage and current
+            let expected_voltage: u16 = output_voltage;
+            let expected_current: i16 = (libm::fmin((MAXIMUM_ON_CURRENT * output_fraction) as f64, heater_power_limited_max_current)) as i16;
+
+            voltage_accuracy_measurements[i] = calculate_accuracy(heater_voltage_mv, expected_voltage);
+            current_accuracy_measurements[i] = calculate_accuracy(heater_current_ma, expected_current);
+        }
+
+        let voltage_result = calculate_performance_result(&voltage_accuracy_measurements, 0.95, 0.8);
+        let current_result = calculate_performance_result(&current_accuracy_measurements, 0.95, 0.8);
+        (voltage_result, current_result)
     }
-    // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry (does this one actually have any circuitry?)
-    pub fn test_pinpuller_current_sensor() -> PerformanceResult {
-        // Short pinpuller pins
+    
+    // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
+    // Setup: Place x ohm resistor between pinpuller pins. // TODO
+    pub fn test_pinpuller_current_sensor(payload: &mut PayloadController, p_pins: &mut PinpullerPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> PerformanceResult {
+        const EXPECTED_OFF_CURRENT: u16 = 0;
+        const MOSFET_R_ON_RESISTANCE: f32 = 0.1; // TODO
+        const PINPULLER_MOCK_RESISTANCE: f32 = 1.0; // TODO
+        const EXPECTED_ON_CURRENT: u16 = (PINPULLER_VOLTAGE_MILLIVOLTS as f32 / (0.4 + MOSFET_R_ON_RESISTANCE*2.0 + PINPULLER_MOCK_RESISTANCE)) as u16;
+        
+        let mut accuracy_measurements: [f64; 5] = [0.0; 5];
+
+        accuracy_measurements[0] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), 0);
+
         // Activate pinpuller
         // Measure current
-        // Return success if measured current within 10%
-        todo!();
+        p_pins.burn_wire_1.set_high().ok();
+        accuracy_measurements[1] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
+        p_pins.burn_wire_1.set_low().ok();
+        delay_cycles(1000);
+
+        p_pins.burn_wire_1_backup.set_high().ok();
+        accuracy_measurements[2] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
+        p_pins.burn_wire_1_backup.set_low().ok();
+        delay_cycles(1000);
+
+        p_pins.burn_wire_2.set_high().ok();
+        accuracy_measurements[3] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
+        p_pins.burn_wire_2.set_low().ok();
+        delay_cycles(1000);
+
+        p_pins.burn_wire_2_backup.set_high().ok();
+        accuracy_measurements[4] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
+        p_pins.burn_wire_2_backup.set_low().ok();
+
+        calculate_performance_result(&accuracy_measurements, 0.95, 0.8)
     }
+
     // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     pub fn test_lms() -> (PerformanceResult, PerformanceResult, PerformanceResult) {
         // Attach LMS board
