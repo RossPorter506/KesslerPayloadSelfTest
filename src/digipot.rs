@@ -7,7 +7,7 @@ pub const DIGIPOT_MAX_RESISTANCE: u32 = 100000;
 pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
 pub const DIGIPOT_RESOLUTION: u32 = 255;
 
-use crate::{spi::{PayloadSPI, IdleLow, SampleRisingEdge}, pcb_mapping_v5::DigipotCsPin};
+use crate::{spi::{PayloadSPI, IdleLow, SampleRisingEdge}, pcb_mapping_v5::pin_name_types::DigipotCSPin};
 use embedded_hal::digital::v2::OutputPin;
 use crate::sensors::enforce_bounds;
 
@@ -17,10 +17,10 @@ pub enum DigipotChannel{
 }
 
 pub struct Digipot {
-    cs_pin: DigipotCsPin,
+    cs_pin: DigipotCSPin,
 }
 impl Digipot {
-    pub fn new(cs_pin: DigipotCsPin) -> Digipot {
+    pub fn new(cs_pin: DigipotCSPin) -> Digipot {
         Digipot {cs_pin}
     }
     pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>){

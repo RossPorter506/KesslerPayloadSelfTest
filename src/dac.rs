@@ -3,7 +3,7 @@
 
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::pcb_mapping_v5::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, DacCsPin};
+use crate::pcb_mapping_v5::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_name_types::DACCSPin};
 use crate::spi::{PayloadSPI, IdleLow, SampleRisingEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 
@@ -29,10 +29,10 @@ pub enum DACChannel{
 }
 
 pub struct DAC {
-    pub cs_pin: DacCsPin,
+    pub cs_pin: DACCSPin,
 }
 impl DAC{
-    pub fn new(cs_pin: DacCsPin, spi_bus: &mut impl PayloadSPI<IdleLow,SampleRisingEdge>) -> DAC {
+    pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<IdleLow,SampleRisingEdge>) -> DAC {
         let mut dac = DAC{cs_pin};
         dac.init(spi_bus);
         dac

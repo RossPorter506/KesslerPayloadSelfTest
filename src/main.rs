@@ -10,17 +10,18 @@ use msp430_rt::entry;
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
-use sensors::PayloadController;
 use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
 use ufmt::uwrite;
 
-mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerPins};
+mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerActivationPins};
 mod spi; use spi::{PayloadSPIBitBangConfig};
 mod dac; use dac::{DAC};
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot;
 mod sensors;
 mod serial; use serial::SerialWriter;
+
+use crate::{pcb_mapping_v5::PayloadControlPins, sensors::PayloadBuilder};
 mod testing;
 
 
@@ -38,23 +39,30 @@ fn main() -> ! {
     let port5 = Batch::new(periph.P5).split(&pmm);
     let port6 = Batch::new(periph.P6).split(&pmm);
     
-    let mut pinpuller_pins = PinpullerPins{ 
-                                                burn_wire_1:        port3.pin2.to_output(),
-                                                burn_wire_1_backup: port3.pin3.to_output(),
-                                                burn_wire_2:        port5.pin0.to_output(),
-                                                burn_wire_2_backup: port5.pin1.to_output(),
-                                                pinpuller_sense:    port5.pin3.pullup(),};
+    let mut pinpuller_pins = PinpullerActivationPins{ 
+        burn_wire_1:        port3.pin2.to_output(),
+        burn_wire_1_backup: port3.pin3.to_output(),
+        burn_wire_2:        port5.pin0.to_output(),
+        burn_wire_2_backup: port5.pin1.to_output()};
 
-    let mut led_pins = LEDPins{red_led: port2.pin1.to_output(), 
-                                        yellow_led: port2.pin2.to_output(), 
-                                        green_led: port2.pin3.to_output()};
+    let mut led_pins = LEDPins{
+        red_led: port2.pin1.to_output(), 
+        yellow_led: port2.pin2.to_output(), 
+        green_led: port2.pin3.to_output()};
     
-    let mut payload_spi_bus = PayloadSPIBitBangConfig::new( port4.pin7.pulldown(),
-                                                            port4.pin6.to_output(),
-                                                            port4.pin5.to_output(),)
-                                                            .sck_idle_low()
-                                                            .sample_on_rising_edge()
-                                                            .create();
+    let mut payload_spi_bus = PayloadSPIBitBangConfig::new( 
+        port4.pin7.pulldown(),
+        port4.pin6.to_output(),
+        port4.pin5.to_output(),)
+        .sck_idle_low()
+        .sample_on_rising_edge()
+        .create();
+    
+    let mut payload_control = PayloadControlPins{   
+        payload_enable: port6.pin6.to_output(),
+        heater_enable: port4.pin4.to_output(), 
+        cathode_switch: port3.pin0.to_output(), 
+        tether_switch: port6.pin1.to_output() };
 
     let mut digipot = Digipot::new(port6.pin4.to_output());
     let mut dac = DAC::new(port6.pin3.to_output(), &mut payload_spi_bus);
@@ -86,12 +94,15 @@ fn main() -> ! {
 
     let mut counter: u8 = 0;
 
-    let mut payload = PayloadController::new(tether_adc, temperature_adc, misc_adc, dac, digipot);
+    let mut payload = PayloadBuilder::new_disabled_payload(tether_adc, temperature_adc, misc_adc, dac, digipot, payload_control);
 
     let mut payload_spi_bus = payload_spi_bus.into_idle_high().into_sample_falling_edge();
 
     //AutomatedFunctionalTests::heater_functional_test(&mut tether_adc, &mut digipot, &mut payload_spi_bus);
-    AutomatedPerformanceTests::test_pinpuller_current_sensor(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus);
+    //AutomatedPerformanceTests::test_pinpuller_current_sensor(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus);
+
+    pinpuller_pins.burn_wire_2.set_high().ok();
+    pinpuller_pins.burn_wire_1.set_high().ok();
 
     loop {
         snake_leds(&mut counter, &mut led_pins);

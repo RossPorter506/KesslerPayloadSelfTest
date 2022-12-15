@@ -1,10 +1,14 @@
 // This file provides a high-level interface for interacting with the various sensors on the Kessler payload board.
 
+use core::marker::PhantomData;
+
+use embedded_hal::digital::v2::OutputPin;
+
 use crate::digipot::Digipot; 
 use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC};
 use crate::dac::{DAC, DACCommand};
 use crate::spi::{PayloadSPI, IdleHigh,SampleFallingEdge, IdleLow, SampleRisingEdge};
-use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*};
+use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins};
 
 // Returns num such that "lower bound <= num <= upper_bound"
 pub fn enforce_bounds<T: PartialOrd>(lower_bound: T, mut num: T, upper_bound: T) -> T{
@@ -17,24 +21,46 @@ pub fn enforce_bounds<T: PartialOrd>(lower_bound: T, mut num: T, upper_bound: T)
     num
 }
 
-pub struct PayloadController {
+pub trait PayloadState{}
+pub struct PayloadOn; impl PayloadState for PayloadOn{}
+pub struct PayloadOff; impl PayloadState for PayloadOff{}
+
+pub struct PayloadBuilder;
+impl PayloadBuilder{
+    pub fn new_enabled_payload( tether_adc: TetherADC, 
+                                temperature_adc: TemperatureADC,
+                                misc_adc: MiscADC,
+                                dac: DAC,
+                                digipot: Digipot,
+                                mut pins: PayloadControlPins) -> PayloadController<PayloadOn> {
+        pins.payload_enable.set_high().ok();
+        PayloadController::<PayloadOn>{tether_adc, temperature_adc, misc_adc, dac, digipot, pins, _state: PhantomData}
+    }
+    pub fn new_disabled_payload(tether_adc: TetherADC, 
+                                temperature_adc: TemperatureADC,
+                                misc_adc: MiscADC,
+                                dac: DAC,
+                                digipot: Digipot,
+                                mut pins: PayloadControlPins) -> PayloadController<PayloadOff> {
+        pins.payload_enable.set_low().ok();
+        PayloadController::<PayloadOff>{tether_adc, temperature_adc, misc_adc, dac, digipot, pins, _state: PhantomData}
+    }
+}
+
+pub struct PayloadController<STATE: PayloadState> {
     pub tether_adc: TetherADC,
     pub temperature_adc: TemperatureADC,
     pub misc_adc: MiscADC,
     pub dac: DAC,
     pub digipot: Digipot,
+    pub pins: PayloadControlPins,
+    _state: PhantomData<STATE>,
 }
-impl PayloadController{
-    pub fn new( tether_adc: TetherADC, 
-                temperature_adc: TemperatureADC,
-                misc_adc: MiscADC,
-                dac: DAC,
-                digipot: Digipot) -> PayloadController {
-        PayloadController{tether_adc, temperature_adc, misc_adc, dac, digipot}
+impl<STATE: PayloadState> PayloadController<STATE>{
+    pub fn return_parts(self) -> (TetherADC, TemperatureADC, MiscADC, DAC, Digipot, PayloadControlPins){
+        (self.tether_adc, self.temperature_adc, self.misc_adc, self.dac, self.digipot, self.pins)
     }
-    pub fn return_parts(self) -> (TetherADC, TemperatureADC, MiscADC, DAC, Digipot){
-        (self.tether_adc, self.temperature_adc, self.misc_adc, self.dac, self.digipot)
-    }
+    // These sensors are always available
     // Temperature sensors
     pub fn get_lms_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16{
         let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
@@ -44,7 +70,39 @@ impl PayloadController{
         let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
         payload_temperature_eq(adc_voltage)
     }
+    // Aperture
+    pub fn get_aperture_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
+        let adc_voltage = self.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
+        aperture_current_sensor_eq(adc_voltage)
+    }
 
+    // Pinpuller
+    pub fn get_pinpuller_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
+        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, spi_bus);
+        pinpuller_current_sensor_eq(adc_voltage)
+    }
+
+    // LMS
+    pub fn get_lms_voltage_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
+        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, spi_bus);
+        pinpuller_current_sensor_eq(adc_voltage)
+    }
+}
+impl PayloadController<PayloadOff>{
+    pub fn into_enabled_payload(mut self) -> PayloadController<PayloadOn> {
+        self.pins.payload_enable.set_high().ok();
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, _state: PhantomData }
+    }
+}
+impl PayloadController<PayloadOn>{
+    pub fn into_disabled_payload(mut self) -> PayloadController<PayloadOff> {
+        self.pins.heater_enable.set_low().ok();
+        self.pins.payload_enable.set_low().ok();
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, _state: PhantomData }
+    }
+    // These sensors are only available when the payload is on.
     /* Supplies */
     // Heater
     pub fn set_heater_voltage(&mut self, mut target_millivolts: u16, spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>){
@@ -103,24 +161,6 @@ impl PayloadController{
     pub fn get_repeller_voltage_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> i32 {
         let adc_voltage = self.tether_adc.read_voltage_from(&REPELLER_VOLTAGE_SENSOR, spi_bus);
         repeller_voltage_eq(adc_voltage)
-    }
-
-    // Aperture
-    pub fn get_aperture_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
-        aperture_current_sensor_eq(adc_voltage)
-    }
-
-    // Pinpuller
-    pub fn get_pinpuller_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, spi_bus);
-        pinpuller_current_sensor_eq(adc_voltage)
-    }
-
-    // LMS
-    pub fn get_lms_voltage_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFallingEdge>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, spi_bus);
-        pinpuller_current_sensor_eq(adc_voltage)
     }
 }
 

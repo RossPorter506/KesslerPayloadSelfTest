@@ -1,11 +1,12 @@
 use embedded_hal::digital::v2::OutputPin;
+use libm::pow;
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use replace_with::replace_with;
 
 use crate::delay_cycles;
-use crate::sensors::PayloadController;
+use crate::sensors::{PayloadController, PayloadOn, PayloadState};
 use crate::{spi::*, adc::*, digipot::*, dac::*};
-use crate::pcb_mapping_v5::{sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
+use crate::pcb_mapping_v5::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
@@ -13,7 +14,7 @@ use crate::pcb_mapping_v5::{sensor_locations::*, power_supply_limits::*, power_s
 pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
     // Internal function to reduce code duplication
-    fn test_adc_functional<CsPin: AdcCsPin, SENSOR:ADCSensor>(  adc: &mut ADC<CsPin, SENSOR>, 
+    fn test_adc_functional<CsPin: ADCCSPin, SENSOR:ADCSensor>(  adc: &mut ADC<CsPin, SENSOR>, 
                                                                 spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>,
                                                                 wanted_channel: ADCChannel) -> bool {
         let adc_channel_msb = ((wanted_channel as u32) & 0b100) >> 2;
@@ -45,22 +46,22 @@ impl AutomatedFunctionalTests{
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: Isolated 5V supply, tether ADC, isolators
-    pub fn tether_adc_functional_test(tether_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
-        Self::test_adc_functional(tether_adc, spi_bus, ADCChannel::IN7)
+    pub fn tether_adc_functional_test(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
+        Self::test_adc_functional(&mut payload.tether_adc, spi_bus, ADCChannel::IN7)
     }
 
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: temperature ADC
-    pub fn temperature_adc_functional_test(temperature_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
-        Self::test_adc_functional(temperature_adc, spi_bus, ADCChannel::IN7)
+    pub fn temperature_adc_functional_test<DONTCARE: PayloadState>(payload: &mut PayloadController<DONTCARE>, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
+        Self::test_adc_functional(&mut payload.temperature_adc, spi_bus, ADCChannel::IN7)
     }
 
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: misc ADC
-    pub fn misc_adc_functional_test(misc_adc: &mut TetherADC, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
-        Self::test_adc_functional(misc_adc, spi_bus, ADCChannel::IN7)
+    pub fn misc_adc_functional_test<DONTCARE: PayloadState>(payload: &mut PayloadController<DONTCARE>, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> bool {
+        Self::test_adc_functional(&mut payload.misc_adc, spi_bus, ADCChannel::IN7)
     }
 
     // Dependencies: OBC SPI
@@ -71,10 +72,11 @@ impl AutomatedFunctionalTests{
         // Return true if recorded packet matches
         todo!();
     }
+
     // Dependencies: pinpuller, pinpuller current sensor, misc ADC
-    // Setup: Place x ohm resistor between pinpuller 
-    pub fn pinpuller_functional_test(   pins: &mut PinpullerPins, 
-                                        payload: &mut PayloadController,
+    // Setup: Place 2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
+    pub fn pinpuller_functional_test<DONTCARE:PayloadState>(   pins: &mut PinpullerActivationPins, 
+                                        payload: &mut PayloadController<DONTCARE>,
                                         spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> (bool, bool, bool, bool) {
         const ON_MILLIAMP_THRESHOLD: u16 = 1000; // TODO: Figure out threshhold
         
@@ -104,32 +106,76 @@ impl AutomatedFunctionalTests{
     }
 
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
-    pub fn heater_functional_test(tether_adc: &mut TetherADC, digipot: &mut Digipot, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> bool {
-        // Read heater voltage. Should be near zero.
-        let zero_count = tether_adc.read_count_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
-        // Set heater voltage to maximum.
-
-        // Temporarily take ownership of the bus to change it's typestate to talk to digipot.
+    pub fn heater_functional_test(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> bool {
+        // Set heater voltage to minimum
+        // To do this we need to temporarily take ownership (can't move out of borrowed reference) of the bus to change it's typestate to talk to digipot.
         // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the bool. Neither option is really that clean.
         replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
             let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge(); //configure bus for digipot
-            digipot.set_channel_to_count(HEATER_DIGIPOT_CHANNEL, 0x00, &mut spi_bus_); // read digipot
+            payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut spi_bus_); // set voltage
             spi_bus_.into_idle_high().into_sample_falling_edge() //return bus
         });
+        delay_cycles(100_000);
+        // Read heater voltage. Should be near zero.
+        let min_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+        
+        // Set heater voltage to maximum.
+        replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+            let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge(); //configure bus for digipot
+            payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, &mut spi_bus_); // set voltage
+            spi_bus_.into_idle_high().into_sample_falling_edge() //return bus
+        });
+        delay_cycles(100_000);
         
         // Read heater voltage. Should be near max (TODO: verify)
-        let max_count = tether_adc.read_count_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
-        zero_count < 100 && max_count > 4000
+        let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+        min_voltage_mv < 50 && max_voltage_mv > 10_000
+    }
+    // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
+    pub fn lms_functional_test<DONTCARE:PayloadState>(payload: &mut PayloadController<DONTCARE>, lms_control: &mut TetherLMSPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult, PerformanceResult) {
+        let mut ambient_counts: [u16; 3] = [0; 3];
+        let mut on_counts: [u16; 3] = [0; 3];
+
+        // Enable phototransistors
+        lms_control.lms_receiver_enable.set_high().ok();
+
+        // Record max voltage/light value
+        ambient_counts[0] = payload.misc_adc.read_count_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
+        ambient_counts[1] = payload.misc_adc.read_count_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
+        ambient_counts[2] = payload.misc_adc.read_count_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
+        let ambient_variance = variance(&ambient_counts);
+
+        // Enable LEDs
+        lms_control.lms_led_enable.set_high().ok();
+
+        // Record max voltage/light value
+        on_counts[0] = payload.misc_adc.read_count_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
+        on_counts[1] = payload.misc_adc.read_count_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
+        on_counts[2] = payload.misc_adc.read_count_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
+        let on_variance = variance(&on_counts);
+
+        lms_control.lms_receiver_enable.set_low().ok();
+        lms_control.lms_led_enable.set_low().ok();
+
+        // Do something with ambient_variance and on_variance
+        todo!();
+        
     }
 
 }
 
-// DO NOT USE OUTSIDE OF replace_with! WILL panic if called!
+fn variance<T: Copy + Into<f32> + Ord>(arr: &[T]) -> f32{
+    let length = arr.iter().len();
+    let average: f32 = arr.iter().map(|n| (*n).into()).sum();
+    arr.iter().fold(0.0, |sum, n| sum + ((*n).into()-average)*((*n).into()-average) ) / (length as f32)
+}
+
+// DO NOT USE OUTSIDE OF 'replace_with'! WILL panic if called!
 // Make sure your replace_with call is panic-free!!
 #[allow(unreachable_code)]
 fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFallingEdge>{
     unreachable!(); // This will panic.
-    let periph = msp430fr2355::Peripherals::take().unwrap(); 
+    let periph = msp430fr2355::Peripherals::take().unwrap(); //so will this 
     let pmm = Pmm::new(periph.PMM);
     let port4 = Batch::new(periph.P4).split(&pmm);
     PayloadSPIBitBangConfig::new(   port4.pin7.pulldown(),
@@ -163,19 +209,22 @@ fn calculate_performance_result(arr: &[f64], success_threshhold: f64, inaccurate
 pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
-    pub fn test_cathode_offset(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+    // Setup: Place a 100k resistor between exterior and cathode-
+    pub fn test_cathode_offset(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
         const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
         let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
 
+        payload.pins.cathode_switch.set_high().ok(); // connect to exterior
         for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+            let output_voltage_mv = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
 
             // Set cathode voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
-                payload.set_cathode_offset_voltage(output_voltage, &mut spi_bus_);
+                payload.set_cathode_offset_voltage(output_voltage_mv, &mut spi_bus_);
                 spi_bus_.into_idle_high().into_sample_falling_edge()
             });
             delay_cycles(100_000); //settling time
@@ -187,12 +236,13 @@ impl AutomatedPerformanceTests{
             let cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
 
             // Calculate expected voltage and current
-            let expected_voltage:i32 = output_voltage as i32;
-            let expected_current:i32 = todo!();
+            let expected_voltage_mv: i32 = output_voltage_mv as i32;
+            let expected_current_ma: i32 = (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
 
-            voltage_accuracy_measurements[i] = calculate_accuracy(cathode_offset_voltage_mv, expected_voltage);
-            current_accuracy_measurements[i] = calculate_accuracy(cathode_offset_current_ua, expected_current as i32);
+            voltage_accuracy_measurements[i] = calculate_accuracy(cathode_offset_voltage_mv, expected_voltage_mv);
+            current_accuracy_measurements[i] = calculate_accuracy(cathode_offset_current_ua, expected_current_ma);
         }
+        payload.pins.cathode_switch.set_low().ok();
 
         let voltage_result = calculate_performance_result(&voltage_accuracy_measurements, 0.95, 0.8);
         let current_result = calculate_performance_result(&current_accuracy_measurements, 0.95, 0.8);
@@ -200,19 +250,22 @@ impl AutomatedPerformanceTests{
     }
     // Almost identical code, feels bad man
     // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
-    pub fn test_tether_bias(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+    // Setup: Place a 100k resistor between tether and cathode-
+    pub fn test_tether_bias(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
         const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
         let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
 
+        payload.pins.tether_switch.set_high().ok(); // connect to tether
         for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+            let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
 
             // Set cathode voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
-                payload.set_tether_bias_voltage(output_voltage, &mut spi_bus_);
+                payload.set_tether_bias_voltage(output_voltage_mv, &mut spi_bus_);
                 spi_bus_.into_idle_high().into_sample_falling_edge()
             });
             delay_cycles(100_000); //settling time
@@ -224,12 +277,13 @@ impl AutomatedPerformanceTests{
             let tether_bias_current_ua = payload.get_tether_bias_current_microamps(spi_bus);
 
             // Calculate expected voltage and current
-            let expected_voltage:i32 = output_voltage as i32;
-            let expected_current:i32 = todo!();
+            let expected_voltage_mv: i32 = output_voltage_mv as i32;
+            let expected_current_ma: i32 = (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
 
-            voltage_accuracy_measurements[i] = calculate_accuracy(tether_bias_voltage_mv, expected_voltage);
-            current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current as i32);
+            voltage_accuracy_measurements[i] = calculate_accuracy(tether_bias_voltage_mv, expected_voltage_mv);
+            current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current_ma as i32);
         }
+        payload.pins.tether_switch.set_low().ok();
 
         let voltage_result = calculate_performance_result(&voltage_accuracy_measurements, 0.95, 0.8);
         let current_result = calculate_performance_result(&current_accuracy_measurements, 0.95, 0.8);
@@ -290,7 +344,7 @@ impl AutomatedPerformanceTests{
     }*/
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
-    pub fn test_heater(payload: &mut PayloadController, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
+    pub fn test_heater(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
         const NUM_MEASUREMENTS: usize = 10;
         const HEATER_RESISTANCE: f32 = 10.0 + 0.01;
         const HEATER_MAX_POWER: f32 = 1.0;
@@ -331,12 +385,13 @@ impl AutomatedPerformanceTests{
     }
     
     // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
-    // Setup: Place x ohm resistor between pinpuller pins. // TODO
-    pub fn test_pinpuller_current_sensor(payload: &mut PayloadController, p_pins: &mut PinpullerPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> PerformanceResult {
+    // Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
+    pub fn test_pinpuller_current_sensor<DONTCARE:PayloadState>(payload: &mut PayloadController<DONTCARE>, p_pins: &mut PinpullerActivationPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> PerformanceResult {
         const EXPECTED_OFF_CURRENT: u16 = 0;
-        const MOSFET_R_ON_RESISTANCE: f32 = 0.1; // TODO
-        const PINPULLER_MOCK_RESISTANCE: f32 = 1.0; // TODO
-        const EXPECTED_ON_CURRENT: u16 = (PINPULLER_VOLTAGE_MILLIVOLTS as f32 / (0.4 + MOSFET_R_ON_RESISTANCE*2.0 + PINPULLER_MOCK_RESISTANCE)) as u16;
+        const MOSFET_R_ON_RESISTANCE: f32 = 0.03; // Verify(?)
+        const PINPULLER_MOCK_RESISTANCE: f32 = 2.0;
+        const SENSE_RESISTANCE: f32 = 0.4;
+        const EXPECTED_ON_CURRENT: u16 = (PINPULLER_VOLTAGE_MILLIVOLTS as f32 / (PINPULLER_MOCK_RESISTANCE + SENSE_RESISTANCE + MOSFET_R_ON_RESISTANCE*2.0)) as u16;
         
         let mut accuracy_measurements: [f64; 5] = [0.0; 5];
 
@@ -364,19 +419,7 @@ impl AutomatedPerformanceTests{
         p_pins.burn_wire_2_backup.set_low().ok();
 
         calculate_performance_result(&accuracy_measurements, 0.95, 0.8)
-    }
-
-    // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
-    pub fn test_lms() -> (PerformanceResult, PerformanceResult, PerformanceResult) {
-        // Attach LMS board
-        // Enable power rails.
-        // Record max voltage/light value
-        // Enable LEDs
-        // Record max voltage/light value
-        // Return success if enabled value double or more of default
-        todo!();
-    }
-    
+    }    
 }
 
 // Tests that require human intervention during the test

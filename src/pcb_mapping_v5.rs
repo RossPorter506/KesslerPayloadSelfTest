@@ -1,34 +1,69 @@
 // This file acts as an abstraction layer for PCB-specific values that may change between revisions.
 
-use embedded_hal::digital::v2::OutputPin;
 use msp430fr2x5x_hal::gpio::*;
 
+pub mod pin_name_types {
+    use msp430fr2x5x_hal::gpio::*;
+
+    pub type RedLEDPin = Pin<P2, Pin1, Output>;
+    pub type YellowLEDPin = Pin<P2, Pin2, Output>;
+    pub type GreenLEDPin = Pin<P2, Pin3, Output>;
+
+    pub type DigipotCSPin =Pin<P6, Pin4, Output>;
+    pub type DACCSPin = Pin<P6, Pin3, Output>;
+    pub type TetherADCCSPin = Pin<P6, Pin2, Output>;
+    pub type TemperatureADCCSPin = Pin<P6, Pin0, Output>;
+    pub type MiscADCCSPin = Pin<P5, Pin4, Output>;
+
+    pub type PayloadMISOPin = Pin<P4, Pin7, Alternate1<Output>>; // direction is set up for using the onboard USART peripheral
+    pub type PayloadMOSIPin = Pin<P4, Pin6, Alternate1<Output>>;
+    pub type PayloadSCKPin =  Pin<P4, Pin5, Alternate1<Output>>;
+
+    pub type OBCMISOPin = Pin<P4, Pin2, Alternate1<Output>>;
+    pub type OBCMOSIPin = Pin<P4, Pin3, Alternate1<Output>>;
+    pub type OBCSCKPin = Pin<P4, Pin1, Alternate1<Output>>;
+    pub type OBCCSPin = Pin<P4, Pin0, Alternate1<Output>>;
+    pub type OBCCSInterruptPin = Pin<P2, Pin0, Input<Pullup>>;
+
+    pub type PayloadEnablePin = Pin<P6, Pin6, Output>;
+    pub type HeaterEnablePin = Pin<P4, Pin4, Output>;
+    pub type CathodeSwitchPin = Pin<P3, Pin0, Output>;
+    pub type TetherSwitchPin = Pin<P6, Pin1, Output>;
+
+    pub type DeploySense1Pin = Pin<P5, Pin2, Input<Pulldown>>;
+    pub type DeploySense2Pin = Pin<P3, Pin1, Input<Pulldown>>;
+    pub type PinpullerDeploySensePin = Pin<P5, Pin3, Input<Pullup>>;
+
+    pub type BurnWire1Pin = Pin<P3, Pin2, Output>;
+    pub type BurnWire1BackupPin = Pin<P3, Pin3, Output>;
+    pub type BurnWire2Pin = Pin<P5, Pin0, Output>;
+    pub type BurnWire2BackupPin = Pin<P5, Pin1, Output>;
+
+    pub type TetherLMSReceiverEnablePin = Pin<P3, Pin4, Output>;
+    pub type TetherLMSLEDEnablePin = Pin<P3, Pin5, Output>;
+}
+use pin_name_types::*;
+
+// Structures that contain commonly used pins together
 pub struct LEDPins{
-    pub red_led: Pin<P2, Pin1, Output>,
-    pub yellow_led: Pin<P2, Pin2, Output>,
-    pub green_led: Pin<P2, Pin3, Output>,
+    pub red_led: RedLEDPin,
+    pub yellow_led: YellowLEDPin,
+    pub green_led: GreenLEDPin,
 }
 
 pub struct PayloadSPIChipSelectPins{
-    pub digipot:        Pin<P6, Pin4, Output>, // used to control the heater supply
-    pub dac:            Pin<P6, Pin3, Output>, // DAC outputs are used to control the cathode offset and tether bias supply's target voltages
-    pub tether_adc:     Pin<P6, Pin2, Output>, //ADC1, measures voltages and currents from tether circuitry
-    pub temperature_adc:Pin<P6, Pin0, Output>, //ADC2, measures board temperatures
-    pub misc_adc:       Pin<P5, Pin4, Output>, //ADC0, measures everything else
+    pub digipot:        DigipotCSPin, // used to control the heater supply
+    pub dac:            DACCSPin, // DAC outputs are used to control the cathode offset and tether bias supply's target voltages
+    pub tether_adc:     TetherADCCSPin, //ADC1, measures voltages and currents from tether circuitry
+    pub temperature_adc:TemperatureADCCSPin, //ADC2, measures board temperatures
+    pub misc_adc:       MiscADCCSPin, //ADC0, measures everything else
 }
-// Shorthand for CS pins. Used by peripherals to remain generic against different PCB versions
-pub trait AdcCsPin: OutputPin{}
-pub type DigipotCsPin =         Pin<P6, Pin4, Output>; impl AdcCsPin for DigipotCsPin{}
-pub type DacCsPin =             Pin<P6, Pin3, Output>; impl AdcCsPin for DacCsPin{}
-pub type TetherAdcCsPin =       Pin<P6, Pin2, Output>; impl AdcCsPin for TetherAdcCsPin{}
-pub type TemperatureAdcCsPin =  Pin<P6, Pin0, Output>; impl AdcCsPin for TemperatureAdcCsPin{}
-pub type MiscAdcCsPin =         Pin<P5, Pin4, Output>; impl AdcCsPin for MiscAdcCsPin{}
 
 //eUSCI_B1
 pub struct PayloadSPIPins{
-    pub miso: Pin<P4, Pin7, Alternate1<Output>>, 
-    pub mosi: Pin<P4, Pin6, Alternate1<Output>>, 
-    pub sck:  Pin<P4, Pin5, Alternate1<Output>>, 
+    pub miso: PayloadMISOPin, 
+    pub mosi: PayloadMOSIPin, 
+    pub sck:  PayloadSCKPin, 
 }
 // Could be the pin type, but bitbang needs a different direction than standard.
 pub type PayloadMisoPort = P4; pub type PayloadMisoPin = Pin7;
@@ -37,44 +72,36 @@ pub type PayloadSckPort  = P4; pub type PayloadSckPin  = Pin5;
 
 //eUSCI_A1
 pub struct OBCSPIPins{
-    pub miso:                   Pin<P4, Pin2, Alternate1<Output>>, //direction is DontCare
-    pub mosi:                   Pin<P4, Pin3, Alternate1<Output>>, //direction is DontCare
-    pub sck:                    Pin<P4, Pin1, Alternate1<Output>>, //direction is DontCare
-    pub chip_select:            Pin<P4, Pin0, Alternate1<Output>>, //direction is DontCare
-    pub chip_select_interrupt:  Pin<P2, Pin0, Input<Pullup>>, 
+    pub miso:                   OBCMISOPin,
+    pub mosi:                   OBCMOSIPin,
+    pub sck:                    OBCSCKPin,
+    pub chip_select:            OBCCSPin,
+    pub chip_select_interrupt:  OBCCSInterruptPin, 
 }
 
 pub struct PayloadControlPins{
-    pub payload_enable: Pin<P6, Pin6, Output>, // turns on most payload devices (power supplies, isolators, etc.)
-    pub heater_enable:  Pin<P4, Pin4, Output>, // turns on heater step-down converter
-    pub cathode_switch: Pin<P3, Pin0, Output>, // connects cathode offset+ to exterior
-    pub tether_switch:  Pin<P6, Pin1, Output>, // connects tether bias+ to tether
+    pub payload_enable: PayloadEnablePin, // turns on most payload devices (power supplies, isolators, etc.)
+    pub heater_enable:  HeaterEnablePin, // turns on heater step-down converter
+    pub cathode_switch: CathodeSwitchPin, // connects cathode offset+ to exterior
+    pub tether_switch:  TetherSwitchPin, // connects tether bias+ to tether
 }
 
 pub struct DeploySensePins{
-    pub deploy_sense_1:         Pin<P5, Pin2, Input<Pulldown>>, // Detects whether the endmass has ejected
-    pub deploy_sense_2:         Pin<P3, Pin1, Input<Pulldown>>, // Detects whether the endmass has ejected
-    pub pinpuller_deploy_sense: Pin<P5, Pin3, Input<Pullup>>, // Detects whether the pinpuller has deployed
-}
-
-pub struct BurnWires{
-    pub burn_wire_1:        Pin<P3, Pin2, Output>, // Primary pinpuller activation
-    pub burn_wire_1_backup: Pin<P3, Pin3, Output>, // Backup
-    pub burn_wire_2:        Pin<P5, Pin0, Output>, // Auxiliary pinpuller activation
-    pub burn_wire_2_backup: Pin<P5, Pin1, Output>, // Backup
+    pub deploy_sense_1:         DeploySense1Pin, // Detects whether the endmass has ejected
+    pub deploy_sense_2:         DeploySense2Pin, // Detects whether the endmass has ejected
+    pub pinpuller_deploy_sense: PinpullerDeploySensePin, // Detects whether the pinpuller has deployed
 }
 
 pub struct TetherLMSPins{
-    pub tether_lms_receiver_enable: Pin<P3, Pin4, Output>, // Detects whether the endmass has ejected
-    pub tether_lms_led_enable:      Pin<P3, Pin5, Output>, // Detects whether the endmass has ejected
+    pub lms_receiver_enable: TetherLMSReceiverEnablePin,
+    pub lms_led_enable:      TetherLMSLEDEnablePin,
 }
 
-pub struct PinpullerPins{
-    pub burn_wire_1:        Pin<P3, Pin2, Output>,
-    pub burn_wire_1_backup: Pin<P3, Pin3, Output>,
-    pub burn_wire_2:        Pin<P5, Pin0, Output>,
-    pub burn_wire_2_backup: Pin<P5, Pin1, Output>,
-    pub pinpuller_sense:    Pin<P5, Pin3, Input<Pullup>>,
+pub struct PinpullerActivationPins{
+    pub burn_wire_1:        BurnWire1Pin,
+    pub burn_wire_1_backup: BurnWire1BackupPin,
+    pub burn_wire_2:        BurnWire2Pin,
+    pub burn_wire_2_backup: BurnWire2BackupPin,
 }
 
 pub mod power_supply_limits {
@@ -197,3 +224,7 @@ pub mod power_supply_equations {
         ((millivolts * 100) / 5138) as u16
     }
 }
+
+pub const TETHER_SENSE_RESISTANCE_OHMS: u32 = 1;
+pub const CATHODE_SENSE_RESISTANCE_OHMS: u32 = 1;
+pub const HEATER_SENSE_RESISTANCE_MILLIOHMS: u32 = 10;
