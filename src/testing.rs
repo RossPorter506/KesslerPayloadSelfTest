@@ -1,5 +1,4 @@
 use embedded_hal::digital::v2::OutputPin;
-use libm::pow;
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use replace_with::replace_with;
 
@@ -132,7 +131,8 @@ impl AutomatedFunctionalTests{
         min_voltage_mv < 50 && max_voltage_mv > 10_000
     }
     // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
-    pub fn lms_functional_test<DONTCARE:PayloadState>(payload: &mut PayloadController<DONTCARE>, lms_control: &mut TetherLMSPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult, PerformanceResult) {
+    // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
+    pub fn lms_functional_test<DONTCARE:PayloadState>(payload: &mut PayloadController<DONTCARE>, lms_control: &mut TetherLMSPins, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (bool, bool, bool) {
         let mut ambient_counts: [u16; 3] = [0; 3];
         let mut on_counts: [u16; 3] = [0; 3];
 
@@ -140,34 +140,31 @@ impl AutomatedFunctionalTests{
         lms_control.lms_receiver_enable.set_high().ok();
 
         // Record max voltage/light value
-        ambient_counts[0] = payload.misc_adc.read_count_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
-        ambient_counts[1] = payload.misc_adc.read_count_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
-        ambient_counts[2] = payload.misc_adc.read_count_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
-        let ambient_variance = variance(&ambient_counts);
+        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
+            ambient_counts[n] = payload.misc_adc.read_count_from(&sensor, spi_bus);
+        }
 
         // Enable LEDs
         lms_control.lms_led_enable.set_high().ok();
 
         // Record max voltage/light value
-        on_counts[0] = payload.misc_adc.read_count_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
-        on_counts[1] = payload.misc_adc.read_count_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
-        on_counts[2] = payload.misc_adc.read_count_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
-        let on_variance = variance(&on_counts);
+        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
+            on_counts[n] = payload.misc_adc.read_count_from(&sensor, spi_bus);
+        }
 
         lms_control.lms_receiver_enable.set_low().ok();
         lms_control.lms_led_enable.set_low().ok();
 
-        // Do something with ambient_variance and on_variance
-        todo!();
-        
+        (on_counts[0] > 2*ambient_counts[0], on_counts[1] > 2*ambient_counts[1], on_counts[2] > 2*ambient_counts[2])
     }
 
 }
 
-fn variance<T: Copy + Into<f32> + Ord>(arr: &[T]) -> f32{
+fn std_dev<T: Copy + Into<f32> + Ord>(arr: &[T]) -> f32{
     let length = arr.iter().len();
     let average: f32 = arr.iter().map(|n| (*n).into()).sum();
-    arr.iter().fold(0.0, |sum, n| sum + ((*n).into()-average)*((*n).into()-average) ) / (length as f32)
+    let variance = arr.iter().fold( 0.0, |sum, n| sum + ((*n).into()-average)*((*n).into()-average) ) / (length as f32);
+    libm::sqrtf(variance)
 }
 
 // DO NOT USE OUTSIDE OF 'replace_with'! WILL panic if called!
@@ -229,10 +226,8 @@ impl AutomatedPerformanceTests{
             });
             delay_cycles(100_000); //settling time
             
-            // Read cathode voltage 
+            // Read cathode voltage, current
             let cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
-
-            // Read cathode current (setup TBD)
             let cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
 
             // Calculate expected voltage and current
@@ -262,7 +257,7 @@ impl AutomatedPerformanceTests{
             let output_fraction =  output_percentage as f32 * 0.01;
             let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
 
-            // Set cathode voltage
+            // Set tether voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low().into_sample_rising_edge();
                 payload.set_tether_bias_voltage(output_voltage_mv, &mut spi_bus_);
@@ -270,10 +265,8 @@ impl AutomatedPerformanceTests{
             });
             delay_cycles(100_000); //settling time
             
-            // Read cathode voltage 
+            // Read tether voltage, current
             let tether_bias_voltage_mv = payload.get_tether_bias_voltage_millivolts(spi_bus);
-
-            // Read cathode current (setup TBD)
             let tether_bias_current_ua = payload.get_tether_bias_current_microamps(spi_bus);
 
             // Calculate expected voltage and current
@@ -347,7 +340,7 @@ impl AutomatedPerformanceTests{
     pub fn test_heater(payload: &mut PayloadController<PayloadOn>, spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFallingEdge>) -> (PerformanceResult, PerformanceResult) {
         const NUM_MEASUREMENTS: usize = 10;
         const HEATER_RESISTANCE: f32 = 10.0 + 0.01;
-        const HEATER_MAX_POWER: f32 = 1.0;
+        const HEATER_MAX_POWER: f32 = 1.0; // TODO: Verify?
         const MAXIMUM_ON_CURRENT: f32 = HEATER_MAX_VOLTAGE_MILLIVOLTS as f32 / HEATER_RESISTANCE; 
         let heater_power_limited_max_current: f64 = 1000.0 * libm::sqrt((HEATER_MAX_POWER / HEATER_RESISTANCE) as f64);
         let mut voltage_accuracy_measurements: [f64; NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
@@ -365,10 +358,8 @@ impl AutomatedPerformanceTests{
             });
             delay_cycles(100_000); //settling time
             
-            // Read voltage 
+            // Read voltage, current
             let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
-
-            // Read current (setup TBD)
             let heater_current_ma = payload.get_heater_current_milliamps(spi_bus);
 
             // Calculate expected voltage and current
@@ -397,26 +388,14 @@ impl AutomatedPerformanceTests{
 
         accuracy_measurements[0] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), 0);
 
-        // Activate pinpuller
-        // Measure current
-        p_pins.burn_wire_1.set_high().ok();
-        accuracy_measurements[1] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
-        p_pins.burn_wire_1.set_low().ok();
-        delay_cycles(1000);
-
-        p_pins.burn_wire_1_backup.set_high().ok();
-        accuracy_measurements[2] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
-        p_pins.burn_wire_1_backup.set_low().ok();
-        delay_cycles(1000);
-
-        p_pins.burn_wire_2.set_high().ok();
-        accuracy_measurements[3] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
-        p_pins.burn_wire_2.set_low().ok();
-        delay_cycles(1000);
-
-        p_pins.burn_wire_2_backup.set_high().ok();
-        accuracy_measurements[4] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
-        p_pins.burn_wire_2_backup.set_low().ok();
+        // For each pin, activate the pinpuller through that channel and measure the current
+        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; 4] = [&mut p_pins.burn_wire_1, &mut p_pins.burn_wire_1_backup, &mut p_pins.burn_wire_2, &mut p_pins.burn_wire_2_backup];
+        for (n, pin) in pin_list.iter_mut().enumerate() {
+            pin.set_high().ok();
+            accuracy_measurements[n+1] = calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT);
+            pin.set_low().ok();
+            delay_cycles(1000);
+        }
 
         calculate_performance_result(&accuracy_measurements, 0.95, 0.8)
     }    
