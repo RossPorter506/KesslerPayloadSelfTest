@@ -1,8 +1,7 @@
 #![no_main]
 #![no_std]
-
+#![feature(int_log)]
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
-
 
 use digipot::Digipot;
 use embedded_hal::{digital::v2::*};
@@ -10,10 +9,11 @@ use msp430_rt::entry;
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
+#[allow(unused_imports)]
 use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
 use ufmt::uwrite;
 
-mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerActivationPins};
+mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins};
 mod spi; use spi::{PayloadSPIBitBangConfig};
 mod dac; use dac::{DAC};
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
@@ -32,6 +32,7 @@ fn main() -> ! {
     let _wdt = Wdt::constrain(periph.WDT_A);
 
     let pmm = Pmm::new(periph.PMM);
+    
 
     let port2 = Batch::new(periph.P2).split(&pmm);
     let port3 = Batch::new(periph.P3).split(&pmm);
@@ -55,7 +56,7 @@ fn main() -> ! {
         port4.pin6.to_output(),
         port4.pin5.to_output(),)
         .sck_idle_low()
-        .sample_on_rising_edge()
+        .sample_on_first_edge()
         .create();
     
     let mut payload_control = PayloadControlPins{   
@@ -64,6 +65,15 @@ fn main() -> ! {
         cathode_switch: port3.pin0.to_output(), 
         tether_switch: port6.pin1.to_output() };
 
+    let mut lms_control_pins = TetherLMSPins{   
+        lms_receiver_enable: port3.pin4.to_output(), 
+        lms_led_enable:      port3.pin5.to_output()};
+
+    let mut deploy_sense_pins = DeploySensePins{
+        endmass_sense_1: port5.pin2.pulldown(),
+        endmass_sense_2: port3.pin1.pulldown(),
+        pinpuller_sense: port5.pin3.pullup()};
+    
     let mut digipot = Digipot::new(port6.pin4.to_output());
     let mut dac = DAC::new(port6.pin3.to_output(), &mut payload_spi_bus);
     let mut tether_adc = TetherADC::new(port6.pin2.to_output());
@@ -79,40 +89,37 @@ fn main() -> ! {
     let (smclock, _aclock) = ClockConfig::new(periph.CS).mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
                                                                      .smclk_on(SmclkDiv::_1)
                                                                      .freeze(&mut fram);
-    let mut serial_tx = SerialConfig::new(  
-                                periph.E_USCI_A1,
-                                BitOrder::LsbFirst,
-                                BitCount::EightBits,
-                                StopBits::OneStopBit,
-                                Parity::NoParity,
-                                Loopback::NoLoop,
-                                115200)
-                                .use_smclk(&smclock)
-                                .tx_only(port4.pin3.to_alternate1());
+    let (serial_tx, serial_rx) = SerialConfig::new(  
+            periph.E_USCI_A1,
+            BitOrder::LsbFirst,
+            BitCount::EightBits,
+            StopBits::OneStopBit,
+            Parity::NoParity,
+            Loopback::NoLoop,
+            115200)
+            .use_smclk(&smclock).split(port4.pin3.to_alternate1(), port4.pin2.to_alternate1());
 
     let mut serial_writer = SerialWriter::new(serial_tx);
 
+    let mut payload = PayloadBuilder::new_enabled_payload(tether_adc, temperature_adc, misc_adc, dac, digipot, payload_control);
+
+    let mut payload_spi_bus = payload_spi_bus.into_idle_high();
+
+    //AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
+    //AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
+    AutomatedPerformanceTests::test_heater(&mut payload, &mut payload_spi_bus);
+    //AutomatedPerformanceTests::test_cathode_offset(&mut payload, &mut payload_spi_bus);
     let mut counter: u8 = 0;
-
-    let mut payload = PayloadBuilder::new_disabled_payload(tether_adc, temperature_adc, misc_adc, dac, digipot, payload_control);
-
-    let mut payload_spi_bus = payload_spi_bus.into_idle_high().into_sample_falling_edge();
-
-    //AutomatedFunctionalTests::heater_functional_test(&mut tether_adc, &mut digipot, &mut payload_spi_bus);
-    //AutomatedPerformanceTests::test_pinpuller_current_sensor(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus);
-
-    pinpuller_pins.burn_wire_2.set_high().ok();
-    pinpuller_pins.burn_wire_1.set_high().ok();
 
     loop {
         snake_leds(&mut counter, &mut led_pins);
-        uwrite!(serial_writer, "Hello, World!\r\n").unwrap();
+        uwrite!(serial_writer, "Hello, World!\r\n").ok();
         delay_cycles(45000);
     }
 }
 
 fn delay_cycles(num_cycles: u32){ //approximate delay fn
-    let delay = num_cycles/19;
+    let delay = (19*num_cycles + 13*num_cycles)/32;
     for _ in 0..delay {
         msp430::asm::nop()
     }

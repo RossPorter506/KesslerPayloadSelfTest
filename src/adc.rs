@@ -5,7 +5,7 @@
 use embedded_hal::digital::v2::OutputPin;
 use no_std_compat::marker::PhantomData;
 
-use crate::spi::{IdleHigh, SampleFallingEdge};
+use crate::spi::{IdleHigh, SampleFirstEdge};
 use crate::{spi::PayloadSPI};
 use crate::pcb_mapping_v5::{peripheral_vcc_values::*, pin_name_types::*};
 
@@ -73,7 +73,7 @@ impl MiscADC{
 }
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
-    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> u16{
+    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> u16{
         let result: u16;
         let _ = self.cs_pin.set_low();
         
@@ -103,7 +103,7 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     pub fn count_to_voltage(&self, count: u16) -> u16{
         count * self.vcc_millivolts / ADC_RESOLUTION
     }
-    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFallingEdge>) -> u16{
+    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> u16{
         let count = self.read_count_from(&wanted_sensor, spi_bus);
         self.count_to_voltage(count)
     }

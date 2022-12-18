@@ -7,7 +7,7 @@ pub const DIGIPOT_MAX_RESISTANCE: u32 = 100000;
 pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
 pub const DIGIPOT_RESOLUTION: u32 = 255;
 
-use crate::{spi::{PayloadSPI, IdleLow, SampleRisingEdge}, pcb_mapping_v5::pin_name_types::DigipotCSPin};
+use crate::{spi::{PayloadSPI, IdleLow, SampleFirstEdge}, pcb_mapping_v5::pin_name_types::DigipotCSPin};
 use embedded_hal::digital::v2::OutputPin;
 use crate::sensors::enforce_bounds;
 
@@ -23,11 +23,11 @@ impl Digipot {
     pub fn new(cs_pin: DigipotCSPin) -> Digipot {
         Digipot {cs_pin}
     }
-    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>){
+    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>){
         let count = self.resistance_to_count(wanted_resistance);
         self.set_channel_to_count(channel, count, spi_bus);
     }
-    pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<IdleLow, SampleRisingEdge>){
+    pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>){
         let payload = ((channel as u16) << 8 + count) as u32;
         let _ = self.cs_pin.set_low();
         spi_bus.send(16, payload);

@@ -24,9 +24,9 @@ no-std-compat="0.4.1"
 libm="0.2.6"
 ufmt ="0.2.0"
 
-#[dependencies.num]
-#version = "0.4"
-#default-features = false
+[dependencies.num]
+version = "0.4"
+default-features = false
 
 [dependencies.replace_with]
 version = "0.1.7"
@@ -34,9 +34,11 @@ default-features = false
 features = []
 
 [profile.release]
-opt-level = "s" # "z" fails to compile.
+opt-level = "z" # "z" fails to compile.
 codegen-units = 1
-lto = "fat"
+lto = "on"
+#strip = true
+panic = "abort"
 
 [profile.dev]
 opt-level = "s"

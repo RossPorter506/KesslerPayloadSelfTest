@@ -30,8 +30,8 @@ pub mod pin_name_types {
     pub type CathodeSwitchPin = Pin<P3, Pin0, Output>;
     pub type TetherSwitchPin = Pin<P6, Pin1, Output>;
 
-    pub type DeploySense1Pin = Pin<P5, Pin2, Input<Pulldown>>;
-    pub type DeploySense2Pin = Pin<P3, Pin1, Input<Pulldown>>;
+    pub type EndmassSense1Pin = Pin<P5, Pin2, Input<Pulldown>>;
+    pub type EndmassSense2Pin = Pin<P3, Pin1, Input<Pulldown>>;
     pub type PinpullerDeploySensePin = Pin<P5, Pin3, Input<Pullup>>;
 
     pub type BurnWire1Pin = Pin<P3, Pin2, Output>;
@@ -87,9 +87,9 @@ pub struct PayloadControlPins{
 }
 
 pub struct DeploySensePins{
-    pub deploy_sense_1:         DeploySense1Pin, // Detects whether the endmass has ejected
-    pub deploy_sense_2:         DeploySense2Pin, // Detects whether the endmass has ejected
-    pub pinpuller_deploy_sense: PinpullerDeploySensePin, // Detects whether the pinpuller has deployed
+    pub endmass_sense_1:    EndmassSense1Pin, // Detects whether the endmass has ejected
+    pub endmass_sense_2:    EndmassSense2Pin, // Detects whether the endmass has ejected
+    pub pinpuller_sense:    PinpullerDeploySensePin, // Detects whether the pinpuller has deployed
 }
 
 pub struct TetherLMSPins{
@@ -197,24 +197,22 @@ pub mod sensor_equations {
         ((v_adc_millivolts as u32 * 1000) / 1804) as u16
     }
 
-    use libm::log;
-
     //Returns temperature in Kelvin
     pub fn payload_temperature_eq(v_adc_millivolts: u16) -> u16 {
-        generic_temperature_eq(v_adc_millivolts, 5000.0)
+        generic_temperature_eq(v_adc_millivolts, 5000)
     }
     pub fn lms_temperature_eq(v_adc_millivolts: u16) -> u16 {
-        generic_temperature_eq(v_adc_millivolts, 3300.0)
+        generic_temperature_eq(v_adc_millivolts, 3300)
     }
-    fn generic_temperature_eq(v_adc_millivolts: u16, vcc: f32) -> u16 {
-        let log_millivolts = log(v_adc_millivolts as f64) as f32;
-        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(vcc-log_millivolts) )) as u16
+    fn generic_temperature_eq(v_adc_millivolts: u16, vcc: u16) -> u16 {
+        let ln_millivolts = (u16::log2(v_adc_millivolts) - u16::log10(v_adc_millivolts)) as u16;
+        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(vcc-ln_millivolts) as f32 )) as u16
     }
 }
 /* Supply control equations */
 pub mod power_supply_equations {
-    pub fn heater_target_voltage_to_digipot_resistance(millivolts: f32) -> u32{
-        (75_000.0 / ((millivolts)/810.0 - 1.0)) as u32
+    pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
+        (75_000.0 / ((millivolts as f32)/810.0 - 1.0)) as u32
     }
 
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
