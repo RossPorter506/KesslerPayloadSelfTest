@@ -1,5 +1,6 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
 use embedded_hal::serial::Read;
+use fixed::types::extra::U32;
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use replace_with::replace_with;
@@ -12,14 +13,12 @@ use crate::serial::SerialWriter;
 use crate::{spi::*, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping_v5::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use libm;
-
+use fixed::{self, FixedI64};
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
 // Functional (pass/fail) tests
 pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
-
     pub fn full_system_test<USCI:SerialUsci>(
             payload: &mut PayloadController<PayloadOn>, 
             pinpuller_pins: &mut PinpullerActivationPins, 
@@ -78,7 +77,7 @@ impl AutomatedFunctionalTests{
             payload: &'a mut PayloadController<PayloadOn>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.tether_adc, spi_bus, ADCChannel::IN7);
-        SensorResult { name: "TethADC", result }
+        SensorResult { name: "Tether ADC", result }
     }
 
     // Ask to read channel 7.
@@ -88,7 +87,7 @@ impl AutomatedFunctionalTests{
             payload: &'a mut PayloadController<DONTCARE>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.temperature_adc, spi_bus, ADCChannel::IN7);
-        SensorResult { name: "TempADC", result }
+        SensorResult { name: "Temperature ADC", result }
     }
 
     // Ask to read channel 7.
@@ -98,7 +97,7 @@ impl AutomatedFunctionalTests{
             payload: &'a mut PayloadController<DONTCARE>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result =Self::test_adc_functional(&mut payload.misc_adc, spi_bus, ADCChannel::IN7);
-        SensorResult { name: "MiscADC", result }
+        SensorResult { name: "Misc ADC", result }
     }
 
     // Dependencies: OBC SPI
@@ -135,10 +134,10 @@ impl AutomatedFunctionalTests{
             delay_cycles(1000);
         }
         
-        [SensorResult{name: "PP1",    result: results[0]}, 
-         SensorResult{name: "PP1B",  result: results[1]}, 
-         SensorResult{name: "PP2",    result: results[2]}, 
-         SensorResult{name: "PP2B",  result: results[3]}]
+        [SensorResult{name: "Pinpuller channel 1",        result: results[0]}, 
+         SensorResult{name: "Pinpuller channel 1 backup", result: results[1]}, 
+         SensorResult{name: "Pinpuller channel 2",        result: results[2]}, 
+         SensorResult{name: "Pinpuller channel 2 backup", result: results[3]}]
     }
 
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
@@ -201,9 +200,9 @@ impl AutomatedFunctionalTests{
         lms_control.lms_receiver_enable.set_low().ok();
         lms_control.lms_led_enable.set_low().ok();
 
-        [SensorResult{name: "LMS1", result: (on_counts[0] > 2*ambient_counts[0])}, 
-         SensorResult{name: "LMS2", result: (on_counts[1] > 2*ambient_counts[1])}, 
-         SensorResult{name: "LMS3", result: (on_counts[2] > 2*ambient_counts[2])}]
+        [SensorResult{name: "Length measurement system 1", result: (on_counts[0] > 2*ambient_counts[0])}, 
+         SensorResult{name: "Length measurement system 2", result: (on_counts[1] > 2*ambient_counts[1])}, 
+         SensorResult{name: "Length measurement system 3", result: (on_counts[2] > 2*ambient_counts[2])}]
     }
 
 }
@@ -224,9 +223,15 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFirstEdge>{
                                     .create()
 }
 
-fn calculate_accuracy<T: Copy + Into<f32>>(measured:T, actual:T) -> f32 {
-    let result = measured.into() - actual.into() / actual.into();
-    if result >= 0.0 {result} else {-result}
+fn order<T: PartialOrd>(a:T, b:T) -> (T, T) {
+    if a >= b {(a,b)} else {(b,a)}
+}
+
+fn calculate_accuracy(measured:i32, actual: i32) -> FixedI64<U32> {
+    let (largest, smallest) = order(FixedI64::<U32>::from(measured), FixedI64::<U32>::from(actual));
+
+    (largest - smallest) / FixedI64::<U32>::from(actual)
+    
 }
 fn average<T: Copy + Into<f64>>(arr: &[T]) -> f64 {
     let mut cumulative_avg: f64 = 0.0;
@@ -236,11 +241,11 @@ fn average<T: Copy + Into<f64>>(arr: &[T]) -> f64 {
     cumulative_avg
 }
 
-fn in_place_average(mut acc: f32, new: f32, n: usize) -> f32{
-    acc += (new - acc) / ((n+1) as f32);
+fn in_place_average(mut acc: FixedI64<U32>, new: FixedI64<U32>, n: u16) -> FixedI64<U32>{
+    acc += (new - acc) / FixedI64::<U32>::from(n+1);
     acc
 } 
-fn calculate_performance_result<'a, 'b>(name: &'a str, accuracy: f32, success_threshhold: f32, inaccurate_threshhold: f32) -> PerformanceResult<'a> {
+fn calculate_performance_result<'a, 'b>(name: &'a str, accuracy: FixedI64<U32>, success_threshhold: FixedI64<U32>, inaccurate_threshhold: FixedI64<U32>) -> PerformanceResult<'a> {
 
     let performance = match accuracy {
     x if x > success_threshhold    => Performance::Nominal,
@@ -263,7 +268,7 @@ impl AutomatedPerformanceTests{
             serial: &mut SerialWriter<USCI>){
         
         // Each of these three fn's takes the same arguments and both return a voltage and current result
-        let fn_arr = [Self::test_cathode_offset, Self::test_tether_bias, /*Self::test_heater*/];
+        let fn_arr = [Self::test_cathode_offset, Self::test_tether_bias, Self::test_heater];
         for sensor_fn in fn_arr.iter(){
             for sensor_result in sensor_fn(payload, spi_bus).iter(){
                 uwriteln!(serial, "{}", sensor_result).ok();
@@ -279,15 +284,15 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: f32 = 0.0;
-        let mut current_accuracy: f32 = 0.0;
+        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
 
         payload.pins.cathode_switch.set_high().ok(); // connect to exterior
-        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage_mv = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
 
             // Set cathode voltage
+            //replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low();
                 payload.set_cathode_offset_voltage(output_voltage_mv, &mut spi_bus_);
@@ -303,13 +308,13 @@ impl AutomatedPerformanceTests{
             let expected_voltage_mv: i32 = output_voltage_mv as i32;
             let expected_current_ua: i32 = 1000 * (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
 
-            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(cathode_offset_voltage_mv as f32, expected_voltage_mv as f32),i);
-            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(cathode_offset_current_ua as f32, expected_current_ua as f32),i);
+            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(cathode_offset_voltage_mv, expected_voltage_mv),i as u16);
+            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(cathode_offset_current_ua, expected_current_ua),i as u16);
         }
         payload.pins.cathode_switch.set_low().ok();
 
-        let voltage_result = calculate_performance_result("COV", voltage_accuracy, 0.95, 0.8);
-        let current_result = calculate_performance_result("COC", current_accuracy, 0.95, 0.8);
+        let voltage_result = calculate_performance_result("Cathode offset voltage", FixedI64::<U32>::from(1)/10, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
+        let current_result = calculate_performance_result("Cathode offset current", FixedI64::<U32>::from(1)/10, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
         [voltage_result, current_result]
     }
     // Almost identical code, feels bad man
@@ -320,13 +325,12 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: f32 = 0.0;
-        let mut current_accuracy: f32 = 0.0;
+        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
 
         payload.pins.tether_switch.set_high().ok(); // connect to tether
-        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u32;
+        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
 
             // Set tether voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
@@ -339,18 +343,18 @@ impl AutomatedPerformanceTests{
             // Read tether voltage, current
             let tether_bias_voltage_mv = payload.get_tether_bias_voltage_millivolts(spi_bus);
             let tether_bias_current_ua = payload.get_tether_bias_current_microamps(spi_bus);
-
+            
             // Calculate expected voltage and current
             let expected_voltage_mv: i32 = output_voltage_mv as i32;
             let expected_current_ma: i32 = (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
-
-            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(tether_bias_voltage_mv as f32, expected_voltage_mv as f32),i);
-            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(tether_bias_current_ua as f32, expected_current_ma as f32),i);
+            
+            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(tether_bias_voltage_mv, expected_voltage_mv),i as u16);
+            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(tether_bias_current_ua, expected_current_ma),i as u16);
         }
         payload.pins.tether_switch.set_low().ok();
 
-        let voltage_result = calculate_performance_result("TBV", voltage_accuracy, 0.95, 0.8);
-        let current_result = calculate_performance_result("TBC", current_accuracy, 0.95, 0.8);
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
+        let current_result = calculate_performance_result("Tether bias current", current_accuracy, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
         [voltage_result, current_result]
     }
     // Generic version, couldn't get working due to overlapping borrows for function pointers
@@ -413,16 +417,16 @@ impl AutomatedPerformanceTests{
             payload: &'a mut PayloadController<PayloadOn>, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
-        const HEATER_RESISTANCE: f32 = 10.0 + 0.01;
-        const HEATER_MAX_POWER: f32 = 1.0; // TODO: Verify?
-        const MAXIMUM_ON_CURRENT: f32 = HEATER_MAX_VOLTAGE_MILLIVOLTS as f32 / HEATER_RESISTANCE; 
-        let heater_power_limited_max_current: f32 = 1000.0 * libm::sqrt((HEATER_MAX_POWER / HEATER_RESISTANCE) as f64) as f32;
-        let mut voltage_accuracy: f32 = 0.0;
-        let mut current_accuracy: f32 = 0.0;
+        let heater_resistance = FixedI64::<U32>::from(10) + FixedI64::<U32>::from(1) / 100; // heater resistance + shunt resistor
+        let heater_max_power = FixedI64::<U32>::from(1); // TODO: Verify?
+        let maximum_on_current = FixedI64::<U32>::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / heater_resistance; 
 
-        for (i, output_percentage) in (0..=100u8).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage = ((HEATER_MAX_VOLTAGE_MILLIVOLTS - HEATER_MIN_VOLTAGE_MILLIVOLTS) as f32 * output_fraction) as u16;
+        let heater_power_limit_max_current_ma: u32 = 316;//1000 * sqrt((heater_max_power / heater_resistance).to_num());
+        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
+
+        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage: u16 = ((HEATER_MAX_VOLTAGE_MILLIVOLTS - HEATER_MIN_VOLTAGE_MILLIVOLTS) * output_percentage as u16)  / 100;
 
             // Set cathode voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
@@ -438,14 +442,14 @@ impl AutomatedPerformanceTests{
 
             // Calculate expected voltage and current
             let expected_voltage: u16 = output_voltage;
-            let expected_current: i16 = min(MAXIMUM_ON_CURRENT * output_fraction, heater_power_limited_max_current) as i16;
+            let expected_current: i16 = min(maximum_on_current.to_num::<u32>() * output_percentage / 100, heater_power_limit_max_current_ma) as i16;
 
-            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(heater_voltage_mv, expected_voltage), i);
-            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(heater_current_ma, expected_current), i);
+            voltage_accuracy = in_place_average(voltage_accuracy, calculate_accuracy(heater_voltage_mv as i32, expected_voltage as i32), i as u16);
+            current_accuracy = in_place_average(current_accuracy, calculate_accuracy(heater_current_ma as i32, expected_current as i32), i as u16);
         }
 
-        let voltage_result = calculate_performance_result("HV", voltage_accuracy, 0.95, 0.8);
-        let current_result = calculate_performance_result("HC", current_accuracy, 0.95, 0.8);
+        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
+        let current_result = calculate_performance_result("Heater current", current_accuracy, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100);
         [voltage_result, current_result]
     }
     
@@ -456,27 +460,27 @@ impl AutomatedPerformanceTests{
             p_pins: &'a mut PinpullerActivationPins, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> PerformanceResult<'a> {
         const EXPECTED_OFF_CURRENT: u16 = 0;
-        const MOSFET_R_ON_RESISTANCE: f32 = 0.03; // Verify(?)
-        const PINPULLER_MOCK_RESISTANCE: f32 = 2.0;
-        const SENSE_RESISTANCE: f32 = 0.4;
+        let mosfet_r_on_resistance: FixedI64<U32> = FixedI64::<U32>::from(3)/100; // Verify(?)
+        let pinpuller_mock_resistance: FixedI64<U32> = FixedI64::<U32>::from(2);
+        let sense_resistance: FixedI64<U32> = FixedI64::<U32>::from(4)/10;
         const NUM_PINS: usize = 4;
-        const EXPECTED_ON_CURRENT: u16 = (PINPULLER_VOLTAGE_MILLIVOLTS as f32 / (PINPULLER_MOCK_RESISTANCE + SENSE_RESISTANCE + MOSFET_R_ON_RESISTANCE*2.0)) as u16;
+        let expected_on_current: u16 = (FixedI64::<U32>::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
         
-        let mut accuracy: f32 = 0.0;
+        let mut accuracy: FixedI64<U32> = FixedI64::ZERO;
         //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
 
-        accuracy = in_place_average(accuracy, calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), 0),0); 
+        accuracy = in_place_average(accuracy, calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 0),0); 
 
         // For each pin, activate the pinpuller through that channel and measure the current
         let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; NUM_PINS] = [&mut p_pins.burn_wire_1, &mut p_pins.burn_wire_1_backup, &mut p_pins.burn_wire_2, &mut p_pins.burn_wire_2_backup];
         for (n, pin) in pin_list.iter_mut().enumerate() {
             pin.set_high().ok();
-            accuracy = in_place_average(accuracy, calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus), EXPECTED_ON_CURRENT), n+1);
+            accuracy = in_place_average(accuracy, calculate_accuracy(payload.get_pinpuller_current_milliamps(spi_bus) as i32, expected_on_current as i32), (n+1) as u16);
             pin.set_low().ok();
             delay_cycles(1000);
         }
 
-        calculate_performance_result("PPC", accuracy, 0.95, 0.8)
+        calculate_performance_result("Pinpuller current sense", accuracy, FixedI64::<U32>::from(95)/100, FixedI64::<U32>::from(80)/100)
     }    
 }
 
@@ -503,8 +507,8 @@ impl ManualFunctionalTests{
 
         let released_states: [bool;2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
 
-        [SensorResult {name: "EndSw1", result: (depressed_states[0] != released_states[0])},
-         SensorResult {name: "EndSw2", result: (depressed_states[1] != released_states[1])}]
+        [SensorResult {name: "Endmass switch 1", result: (depressed_states[0] != released_states[0])},
+         SensorResult {name: "Endmass switch 2", result: (depressed_states[1] != released_states[1])}]
     }
     /*
     // Dependencies: pinpuller
@@ -610,7 +614,7 @@ impl ufmt::uDisplay for SensorResult<'_> {
 pub struct PerformanceResult<'a>{
     name: &'a str, 
     performance: Performance,
-    accuracy: f32, // accuracy error in %
+    accuracy: FixedI64<U32>, // accuracy error in %
 }
 pub enum Performance {
     Nominal,

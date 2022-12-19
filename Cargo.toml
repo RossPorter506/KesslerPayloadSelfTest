@@ -21,12 +21,13 @@ msp430-rt = "0.4.0"
 critical-section = "1.0.0"
 msp430 = { version = "0.4.0", features = ["critical-section-single-core"] }
 no-std-compat="0.4.1"
-libm="0.2.6"
+#libm="0.2.6"
 ufmt ="0.2.0"
-
-[dependencies.num]
-version = "0.4"
-default-features = false
+fixed="1.20.0"
+#fixed-sqrt="0.2.5"
+#[dependencies.num]
+#version = "0.4"
+#default-features = false
 
 [dependencies.replace_with]
 version = "0.1.7"
@@ -37,7 +38,7 @@ features = []
 opt-level = "z" # "z" fails to compile.
 codegen-units = 1
 lto = "on"
-#strip = true
+strip = true
 panic = "abort"
 
 [profile.dev]

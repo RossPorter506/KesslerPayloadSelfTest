@@ -1,12 +1,11 @@
 #![no_main]
 #![no_std]
-#![feature(int_log)]
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
 
 use digipot::Digipot;
 use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
 #[allow(unused_imports)]
@@ -32,7 +31,6 @@ fn main() -> ! {
     let _wdt = Wdt::constrain(periph.WDT_A);
 
     let pmm = Pmm::new(periph.PMM);
-    
 
     let port2 = Batch::new(periph.P2).split(&pmm);
     let port3 = Batch::new(periph.P3).split(&pmm);
@@ -105,14 +103,16 @@ fn main() -> ! {
 
     let mut payload_spi_bus = payload_spi_bus.into_idle_high();
 
-    //AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
-    //AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
-    AutomatedPerformanceTests::test_heater(&mut payload, &mut payload_spi_bus);
-    //AutomatedPerformanceTests::test_cathode_offset(&mut payload, &mut payload_spi_bus);
-    let mut counter: u8 = 0;
+    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
+    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
+    
+    idle_loop(&mut led_pins, &mut serial_writer);
+}
 
+fn idle_loop<USCI:SerialUsci>(led_pins: &mut LEDPins, serial_writer:&mut SerialWriter<USCI>) -> ! {
+    let mut counter: u8 = 0;
     loop {
-        snake_leds(&mut counter, &mut led_pins);
+        snake_leds(&mut counter, led_pins);
         uwrite!(serial_writer, "Hello, World!\r\n").ok();
         delay_cycles(45000);
     }
