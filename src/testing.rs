@@ -215,12 +215,13 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFirstEdge>{
     let periph = msp430fr2355::Peripherals::take().unwrap(); //so will this 
     let pmm = Pmm::new(periph.PMM);
     let port4 = Batch::new(periph.P4).split(&pmm);
-    PayloadSPIBitBangConfig::new(   port4.pin7.pulldown(),
-                                    port4.pin6.to_output(),
-                                    port4.pin5.to_output(),)
-                                    .sck_idle_high()
-                                    .sample_on_first_edge()
-                                    .create()
+    PayloadSPIBitBangConfig::new_from_pins(   
+        port4.pin7.pulldown(),
+        port4.pin6.to_output(),
+        port4.pin5.to_output(),)
+        .sck_idle_high()
+        .sample_on_first_edge()
+        .create()
 }
 
 fn order<T: PartialOrd>(a:T, b:T) -> (T, T) {

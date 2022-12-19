@@ -1,7 +1,5 @@
 // This file acts as an abstraction layer for PCB-specific values that may change between revisions.
 
-use msp430fr2x5x_hal::gpio::*;
-
 pub mod pin_name_types {
     use msp430fr2x5x_hal::gpio::*;
 
@@ -19,11 +17,18 @@ pub mod pin_name_types {
     pub type PayloadMOSIPin = Pin<P4, Pin6, Alternate1<Output>>;
     pub type PayloadSCKPin =  Pin<P4, Pin5, Alternate1<Output>>;
 
+    pub type PayloadMISOBitBangPin = Pin<P4, Pin7, Input<Pulldown>>; // bitbang version
+    pub type PayloadMOSIBitBangPin = Pin<P4, Pin6, Output>;
+    pub type PayloadSCKBitBangPin =  Pin<P4, Pin5, Output>;
+
     pub type OBCMISOPin = Pin<P4, Pin2, Alternate1<Output>>;
     pub type OBCMOSIPin = Pin<P4, Pin3, Alternate1<Output>>;
     pub type OBCSCKPin = Pin<P4, Pin1, Alternate1<Output>>;
     pub type OBCCSPin = Pin<P4, Pin0, Alternate1<Output>>;
     pub type OBCCSInterruptPin = Pin<P2, Pin0, Input<Pullup>>;
+
+    pub type DebugSerialRx = Pin<P4, Pin2, Alternate1<Output>>;
+    pub type DebugSerialTx = Pin<P4, Pin3, Alternate1<Output>>;
 
     pub type PayloadEnablePin = Pin<P6, Pin6, Output>;
     pub type HeaterEnablePin = Pin<P4, Pin4, Output>;
@@ -44,7 +49,9 @@ pub mod pin_name_types {
 }
 use pin_name_types::*;
 
-// Structures that contain commonly used pins together
+use crate::{adc::{MiscADC, TetherADC, TemperatureADC}, dac::DAC, digipot::Digipot};
+
+// Structures that group commonly used pins together
 pub struct LEDPins{
     pub red_led: RedLEDPin,
     pub yellow_led: YellowLEDPin,
@@ -65,10 +72,11 @@ pub struct PayloadSPIPins{
     pub mosi: PayloadMOSIPin, 
     pub sck:  PayloadSCKPin, 
 }
-// Could be the pin type, but bitbang needs a different direction than standard.
-pub type PayloadMisoPort = P4; pub type PayloadMisoPin = Pin7;
-pub type PayloadMosiPort = P4; pub type PayloadMosiPin = Pin6;
-pub type PayloadSckPort  = P4; pub type PayloadSckPin  = Pin5;
+pub struct PayloadSPIBitBangPins{
+    pub miso: PayloadMISOBitBangPin, 
+    pub mosi: PayloadMOSIBitBangPin, 
+    pub sck:  PayloadSCKBitBangPin, 
+}
 
 //eUSCI_A1
 pub struct OBCSPIPins{
@@ -78,7 +86,10 @@ pub struct OBCSPIPins{
     pub chip_select:            OBCCSPin,
     pub chip_select_interrupt:  OBCCSInterruptPin, 
 }
-
+pub struct DebugSerialPins {
+    pub rx: DebugSerialRx,
+    pub tx: DebugSerialTx,
+}
 pub struct PayloadControlPins{
     pub payload_enable: PayloadEnablePin, // turns on most payload devices (power supplies, isolators, etc.)
     pub heater_enable:  HeaterEnablePin, // turns on heater step-down converter
@@ -102,6 +113,14 @@ pub struct PinpullerActivationPins{
     pub burn_wire_1_backup: BurnWire1BackupPin,
     pub burn_wire_2:        BurnWire2Pin,
     pub burn_wire_2_backup: BurnWire2BackupPin,
+}
+
+pub struct PayloadPeripherals{
+    pub digipot:        Digipot,
+    pub dac:            DAC,
+    pub tether_adc:     TetherADC, 
+    pub temperature_adc:TemperatureADC,
+    pub misc_adc:       MiscADC,
 }
 
 pub mod power_supply_limits {

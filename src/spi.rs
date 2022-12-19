@@ -1,6 +1,6 @@
 use core::{marker::PhantomData};
 
-use crate::pcb_mapping_v5::{OBCSPIPins, PayloadMisoPin, PayloadMosiPin, PayloadSckPin, PayloadMisoPort, PayloadSckPort, PayloadMosiPort, PayloadSPIPins};
+use crate::pcb_mapping_v5::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOSIBitBangPin, PayloadMISOBitBangPin, PayloadSCKBitBangPin}, PayloadSPIBitBangPins};
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin, InputPin};
 use msp430fr2x5x_hal::gpio::*;
 use crate::delay_cycles;
@@ -111,30 +111,30 @@ impl OBCSPI for OBCSPIBitBang {
 
 // Constructor for PayloadSPI
 // Ex: .new().sck_idle_low().sample_on_first_edge().create()
-// Only first edge is used, but it doesn't hurt to have the second edge stuff.
+// All peripherals use the 'sample on first edge' phase, but it doesn't hurt to have the second edge stuff.
 pub struct PayloadSPIBitBangConfig<Polarity,Phase>{
-    pub miso:   Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-    pub mosi:   Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-    pub sck:    Pin<PayloadSckPort, PayloadSckPin, Output>, 
+    pub miso:   PayloadMISOBitBangPin, 
+    pub mosi:   PayloadMOSIBitBangPin, 
+    pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
 }
 impl PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
-    pub fn new( miso: Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-                mosi: Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-                sck: Pin<PayloadSckPort, PayloadSckPin, Output>) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
+    pub fn new_from_pins( miso: PayloadMISOBitBangPin, 
+                mosi: PayloadMOSIBitBangPin, 
+                sck: PayloadSCKBitBangPin) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
         PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   miso, mosi, sck,
                                                                 _polarity: PhantomData,
                                                                 _phase: PhantomData, }
     }
-    pub fn new_from_struct( pins: PayloadSPIPins) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
+    pub fn new_from_struct( pins: PayloadSPIBitBangPins) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
         PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   
-            miso: pins.miso.to_gpio().to_input_pulldown(), 
-            mosi: pins.mosi.to_gpio(), 
-            sck: pins.sck.to_gpio(),
+            miso: pins.miso, 
+            mosi: pins.mosi, 
+            sck: pins.sck,
             _polarity: PhantomData,
             _phase: PhantomData, }
-}
+    }
 }
 impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
     pub fn sck_idle_high(mut self) -> PayloadSPIBitBangConfig<IdleHigh, Phase> {
@@ -161,9 +161,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBangConfig<Polarity, P
 }
 
 pub struct PayloadSPIBitBang<Polarity: SckPolarity, Phase: SckPhase>{
-    pub miso:   Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-    pub mosi:   Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-    pub sck:    Pin<PayloadSckPort, PayloadSckPin, Output>, 
+    pub miso:   PayloadMISOBitBangPin, 
+    pub mosi:   PayloadMOSIBitBangPin, 
+    pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
 }

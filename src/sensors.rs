@@ -8,7 +8,7 @@ use crate::digipot::Digipot;
 use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC};
 use crate::dac::{DAC, DACCommand};
 use crate::spi::{PayloadSPI, IdleLow, IdleHigh, SampleFirstEdge};
-use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins};
+use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
 
 // Returns num such that "lower bound <= num <= upper_bound"
 pub fn enforce_bounds<T: PartialOrd>(lower_bound: T, mut num: T, upper_bound: T) -> T{
@@ -27,23 +27,16 @@ pub struct PayloadOff; impl PayloadState for PayloadOff{}
 
 pub struct PayloadBuilder;
 impl PayloadBuilder{
-    pub fn new_enabled_payload( tether_adc: TetherADC, 
-                                temperature_adc: TemperatureADC,
-                                misc_adc: MiscADC,
-                                dac: DAC,
-                                digipot: Digipot,
+    pub fn new_enabled_payload( periph: PayloadPeripherals,
                                 mut pins: PayloadControlPins) -> PayloadController<PayloadOn> {
         pins.payload_enable.set_high().ok();
-        PayloadController::<PayloadOn>{tether_adc, temperature_adc, misc_adc, dac, digipot, pins, _state: PhantomData}
+        PayloadController::<PayloadOn>{tether_adc: periph.tether_adc, temperature_adc: periph.temperature_adc, misc_adc: periph.misc_adc, dac: periph.dac, digipot: periph.digipot, pins, _state: PhantomData}
     }
-    pub fn new_disabled_payload(tether_adc: TetherADC, 
-                                temperature_adc: TemperatureADC,
-                                misc_adc: MiscADC,
-                                dac: DAC,
-                                digipot: Digipot,
+    pub fn new_disabled_payload(periph: PayloadPeripherals,
                                 mut pins: PayloadControlPins) -> PayloadController<PayloadOff> {
+        pins.heater_enable.set_low().ok();
         pins.payload_enable.set_low().ok();
-        PayloadController::<PayloadOff>{tether_adc, temperature_adc, misc_adc, dac, digipot, pins, _state: PhantomData}
+        PayloadController::<PayloadOff>{tether_adc: periph.tether_adc, temperature_adc: periph.temperature_adc, misc_adc: periph.misc_adc, dac: periph.dac, digipot: periph.digipot, pins, _state: PhantomData}
     }
 }
 
@@ -57,8 +50,8 @@ pub struct PayloadController<STATE: PayloadState> {
     _state: PhantomData<STATE>,
 }
 impl<STATE: PayloadState> PayloadController<STATE>{
-    pub fn return_parts(self) -> (TetherADC, TemperatureADC, MiscADC, DAC, Digipot, PayloadControlPins){
-        (self.tether_adc, self.temperature_adc, self.misc_adc, self.dac, self.digipot, self.pins)
+    pub fn return_peripherals(self) -> (PayloadPeripherals, PayloadControlPins){
+        (PayloadPeripherals {tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot}, self.pins)
     }
     // These sensors are always available
     // Temperature sensors
