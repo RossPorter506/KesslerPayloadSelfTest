@@ -43,8 +43,13 @@ pub struct TetherSensor {pub channel: ADCChannel}
 impl ADCSensor for TetherSensor{fn channel(&self) -> ADCChannel {self.channel}}
 pub struct MiscSensor {pub channel: ADCChannel}
 impl ADCSensor for MiscSensor{fn channel(&self) -> ADCChannel {self.channel}}
-pub struct TemperatureSensor {pub channel: ADCChannel}
+pub struct TemperatureSensor {pub channel: ADCChannel, pub vcc: VccType}
 impl ADCSensor for TemperatureSensor{fn channel(&self) -> ADCChannel {self.channel}}
+
+pub enum VccType {
+    LMS, // 3V3
+    Payload, // 5V0
+}
 
 //let temperature_adc = TemperatureADC::new();
 //temperature_adc.read_count_from(TemperatureSensor{adc:TemperatureADC, channel:ADCChannel::IN0}) // ok

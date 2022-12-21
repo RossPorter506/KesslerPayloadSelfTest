@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use embedded_hal::digital::v2::OutputPin;
 
 use crate::digipot::Digipot; 
-use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC};
+use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC, VccType};
 use crate::dac::{DAC, DACCommand};
 use crate::spi::{PayloadSPI, IdleLow, IdleHigh, SampleFirstEdge};
 use crate::pcb_mapping_v5::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
@@ -55,13 +55,20 @@ impl<STATE: PayloadState> PayloadController<STATE>{
     }
     // These sensors are always available
     // Temperature sensors
-    pub fn get_lms_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFirstEdge>) -> u16{
+    /*pub fn get_lms_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFirstEdge>) -> u16{
         let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
         lms_temperature_eq(adc_voltage)
     }
     pub fn get_payload_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFirstEdge>) -> u16{
         let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
         payload_temperature_eq(adc_voltage)
+    }*/
+    pub fn get_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFirstEdge>) -> u16 {
+        let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
+        match &temp_sensor.vcc {
+            VccType::LMS =>     lms_temperature_eq(adc_voltage),
+            VccType::Payload => payload_temperature_eq(adc_voltage)
+        }
     }
     // Aperture
     pub fn get_aperture_current_milliamps(&mut self, spi_bus: &mut impl PayloadSPI<IdleHigh,SampleFirstEdge>) -> u16 {

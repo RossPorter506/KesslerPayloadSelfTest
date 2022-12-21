@@ -156,14 +156,14 @@ pub mod sensor_locations {
     pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
 
     //Temperature ADC
-    pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0};
-    pub const LMS_RECEIVER_TEMPERATURE_SENSOR:      TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN1};
-    pub const MSP430_TEMPERATURE_SENSOR:            TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN2};
-    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN3};
-    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN4};
-    pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5};
-    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR:  TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN6};
-    pub const MSP_3V3_TEMPERATURE_SENSOR:           TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN7};
+    pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0, vcc: VccType::LMS};
+    pub const LMS_RECEIVER_TEMPERATURE_SENSOR:      TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN1, vcc: VccType::LMS};
+    pub const MSP430_TEMPERATURE_SENSOR:            TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN2, vcc: VccType::Payload};
+    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN3, vcc: VccType::Payload};
+    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN4, vcc: VccType::Payload};
+    pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5, vcc: VccType::Payload};
+    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR:  TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN6, vcc: VccType::Payload};
+    pub const MSP_3V3_TEMPERATURE_SENSOR:           TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN7, vcc: VccType::Payload};
 
     // Misc ADC
     pub const PINPULLER_CURRENT_SENSOR: MiscSensor = MiscSensor{channel: ADCChannel::IN0};

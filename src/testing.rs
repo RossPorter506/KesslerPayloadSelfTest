@@ -7,7 +7,7 @@ use replace_with::replace_with;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
-use crate::sensors::{PayloadController, PayloadOn, PayloadState};
+use crate::sensors::{PayloadController, PayloadOn, PayloadState, PayloadOff};
 use crate::serial::SerialWriter;
 #[allow(unused_imports)]
 use crate::{spi::*, adc::*, digipot::*, dac::*};
@@ -485,6 +485,25 @@ impl AutomatedPerformanceTests{
     }    
 }
 
+// Block until we receive any packet over serial
+fn wait_for_any_packet<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> u8{
+    loop {
+        match serial_reader.read() {
+            Ok(chr) => return chr,
+            _ => (),
+        }
+    }
+}
+// Block until we receive the specified character
+fn wait_for_character<USCI: SerialUsci>(wanted_char: u8, serial_reader: &mut Rx<USCI>) {
+    while wait_for_any_packet(serial_reader) != wanted_char {}
+}
+fn wait_for_string<USCI: SerialUsci>(wanted_str: &str, serial_reader: &mut Rx<USCI>) {
+    for chr in wanted_str.as_bytes(){
+        wait_for_character(*chr, serial_reader);
+    }
+}
+
 // Tests that require human intervention during the test
 // Functional (pass/fail) tests
 pub struct ManualFunctionalTests{}
@@ -498,15 +517,15 @@ impl ManualFunctionalTests{
 
         uwriteln!(serial_writer, "Depress switches").ok();
         
-        while serial_reader.read().is_err(){}
+        wait_for_any_packet(serial_reader);
 
-        let depressed_states: [bool;2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
+        let depressed_states: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
 
         uwriteln!(serial_writer, "Release switches").ok();
         
-        while serial_reader.read().is_err(){}
+        wait_for_any_packet(serial_reader);
 
-        let released_states: [bool;2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
+        let released_states: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
 
         [SensorResult {name: "Endmass switch 1", result: (depressed_states[0] != released_states[0])},
          SensorResult {name: "Endmass switch 2", result: (depressed_states[1] != released_states[1])}]
@@ -515,7 +534,7 @@ impl ManualFunctionalTests{
     // Dependencies: pinpuller
     pub fn pinpuller_functional_test() -> [SensorResult; 4] {
         // Enable each of the four redundant lines.
-        // Manually check resistance across pinpuller pins
+        // Manually check resistance(?) across pinpuller pins
         todo!();
     }
     // Dependencies: LMS power switches
@@ -538,6 +557,38 @@ impl ManualFunctionalTests{
     }*/
 }
 
+const TEMPERATURE_SENSOR_SUCCESS: u8 = 95;
+const TEMPERATURE_SENSOR_INACCURATE: u8 = 80;
+fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, USCI:SerialUsci>(
+        room_temp_k: u16,
+        payload: &'a mut PayloadController<DONTCARE>,
+        serial_writer: &'a mut SerialWriter<USCI>,
+        serial_reader: &'a mut Rx<USCI>, 
+        spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'static>; 8]{
+    
+    const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
+        (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
+        (LMS_RECEIVER_TEMPERATURE_SENSOR,       "LMS Receiver"),
+        (MSP430_TEMPERATURE_SENSOR,             "MSP430"),
+        (HEATER_SUPPLY_TEMPERATURE_SENSOR,      "Heater supply"),
+        (HVDC_SUPPLIES_TEMPERATURE_SENSOR,      "HVDC Supplies"),
+        (TETHER_MONITORING_TEMPERATURE_SENSOR,  "Tether monitoring"),
+        (TETHER_CONNECTOR_TEMPERATURE_SENSOR,   "Tether connector"),
+        (MSP_3V3_TEMPERATURE_SENSOR,            "MSP 3V3 supply"),
+    ];
+    
+    let mut output_arr: [PerformanceResult; 8] = [PerformanceResult::default(); 8];
+    for (n, temp_sensor) in TEMP_SENSORS.iter().enumerate() {
+        let tempr = payload.get_temperature_kelvin(&temp_sensor.0, spi_bus);
+        let accuracy = calculate_accuracy(tempr as i32, room_temp_k as i32);
+        output_arr[n] = calculate_performance_result(temp_sensor.1, accuracy, FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+    }
+
+    output_arr
+}
+
+const ASCII_ZERO: u8 = 48;
+const ASCII_NINE: u8 = 57;
 // Accuracy-based tests
 pub struct ManualPerformanceTests{}
 impl ManualPerformanceTests{
@@ -563,7 +614,51 @@ impl ManualPerformanceTests{
         // Ask to read channel X.
         // Return success if SPI packet valid and accuracy within 10%
         todo!();
+    }*/
+    fn is_ascii_number(c: u8) -> bool {
+        c >= ASCII_ZERO && c <= ASCII_NINE
     }
+    // Get room temp from user
+    fn query_room_temp<USCI:SerialUsci>(serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> u16 {
+        loop {
+            uwriteln!(serial_writer, "Enter current temp (>0, two digits, in celcius)").ok();
+            
+            let tens_chr = wait_for_any_packet(serial_reader);
+            let ones_chr = wait_for_any_packet(serial_reader);
+            if Self::is_ascii_number(tens_chr) && Self::is_ascii_number(ones_chr) {
+                let ones = ones_chr - 48;
+                let tens = tens_chr - 48;
+                return 10*(tens as u16) + (ones as u16) + 274;
+            }
+            else{
+                uwriteln!(serial_writer, "Invalid temperature").ok();
+            }
+        };
+    }
+    pub fn two_point_test_temperature_sensor_test<'a, USCI:SerialUsci>( 
+            payload: &'a mut PayloadController<PayloadOff>, // Minimise heat generation
+            serial_writer: &'a mut SerialWriter<USCI>,
+            serial_reader: &'a mut Rx<USCI>, 
+            spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 8]{
+
+
+        let mut room_temp_k: u16 = Self::query_room_temp(serial_writer, serial_reader);
+
+        let arr1 = test_temperature_sensors_against_known_temp(room_temp_k, payload, serial_writer, serial_reader, spi_bus);
+
+        room_temp_k = Self::query_room_temp(serial_writer, serial_reader);
+
+        let arr2 = test_temperature_sensors_against_known_temp(room_temp_k, payload, serial_writer, serial_reader, spi_bus);
+
+        let mut result_arr: [PerformanceResult; 8] = [PerformanceResult::default(); 8];
+
+        for (n, (result1, result2)) in arr1.iter().zip(arr2.iter()).enumerate(){
+            let accuracy = (result1.accuracy + result2.accuracy) / 2;
+            result_arr[n] = calculate_performance_result(result1.name, accuracy, FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+        }
+        result_arr
+    }
+    /*
     // Dependencies: Misc ADC
     pub fn test_misc_adc() -> PerformanceResult {
         // Manually apply known voltage to channel.
@@ -612,11 +707,18 @@ impl ufmt::uDisplay for SensorResult<'_> {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct PerformanceResult<'a>{
     name: &'a str, 
     performance: Performance,
     accuracy: FixedI64<U32>, // accuracy error in %
 }
+impl PerformanceResult<'_>{
+    fn default<'a>()-> PerformanceResult<'a> {
+        PerformanceResult{name: "", performance: Performance::NotWorking, accuracy: FixedI64::<U32>::from(0)}
+    }
+}
+#[derive(Copy, Clone)]
 pub enum Performance {
     Nominal,
     Inaccurate,
