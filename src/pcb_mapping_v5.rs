@@ -1,7 +1,5 @@
 // This file acts as an abstraction layer for PCB-specific values that may change between revisions.
 
-use msp430fr2x5x_hal::gpio::*;
-
 pub mod pin_name_types {
     use msp430fr2x5x_hal::gpio::*;
 
@@ -19,19 +17,26 @@ pub mod pin_name_types {
     pub type PayloadMOSIPin = Pin<P4, Pin6, Alternate1<Output>>;
     pub type PayloadSCKPin =  Pin<P4, Pin5, Alternate1<Output>>;
 
+    pub type PayloadMISOBitBangPin = Pin<P4, Pin7, Input<Pulldown>>; // bitbang version
+    pub type PayloadMOSIBitBangPin = Pin<P4, Pin6, Output>;
+    pub type PayloadSCKBitBangPin =  Pin<P4, Pin5, Output>;
+
     pub type OBCMISOPin = Pin<P4, Pin2, Alternate1<Output>>;
     pub type OBCMOSIPin = Pin<P4, Pin3, Alternate1<Output>>;
     pub type OBCSCKPin = Pin<P4, Pin1, Alternate1<Output>>;
     pub type OBCCSPin = Pin<P4, Pin0, Alternate1<Output>>;
     pub type OBCCSInterruptPin = Pin<P2, Pin0, Input<Pullup>>;
 
+    pub type DebugSerialRx = Pin<P4, Pin2, Alternate1<Output>>;
+    pub type DebugSerialTx = Pin<P4, Pin3, Alternate1<Output>>;
+
     pub type PayloadEnablePin = Pin<P6, Pin6, Output>;
     pub type HeaterEnablePin = Pin<P4, Pin4, Output>;
     pub type CathodeSwitchPin = Pin<P3, Pin0, Output>;
     pub type TetherSwitchPin = Pin<P6, Pin1, Output>;
 
-    pub type DeploySense1Pin = Pin<P5, Pin2, Input<Pulldown>>;
-    pub type DeploySense2Pin = Pin<P3, Pin1, Input<Pulldown>>;
+    pub type EndmassSense1Pin = Pin<P5, Pin2, Input<Pulldown>>;
+    pub type EndmassSense2Pin = Pin<P3, Pin1, Input<Pulldown>>;
     pub type PinpullerDeploySensePin = Pin<P5, Pin3, Input<Pullup>>;
 
     pub type BurnWire1Pin = Pin<P3, Pin2, Output>;
@@ -42,9 +47,12 @@ pub mod pin_name_types {
     pub type TetherLMSReceiverEnablePin = Pin<P3, Pin4, Output>;
     pub type TetherLMSLEDEnablePin = Pin<P3, Pin5, Output>;
 }
+use embedded_hal::digital::v2::OutputPin;
 use pin_name_types::*;
 
-// Structures that contain commonly used pins together
+use crate::{adc::{MiscADC, TetherADC, TemperatureADC}, dac::DAC, digipot::Digipot};
+
+// Structures that group commonly used pins together
 pub struct LEDPins{
     pub red_led: RedLEDPin,
     pub yellow_led: YellowLEDPin,
@@ -58,6 +66,15 @@ pub struct PayloadSPIChipSelectPins{
     pub temperature_adc:TemperatureADCCSPin, //ADC2, measures board temperatures
     pub misc_adc:       MiscADCCSPin, //ADC0, measures everything else
 }
+impl PayloadSPIChipSelectPins {
+    pub fn disable_all(&mut self) {
+        self.digipot.set_high().ok();
+        self.dac.set_high().ok();
+        self.tether_adc.set_high().ok();
+        self.temperature_adc.set_high().ok();
+        self.misc_adc.set_high().ok();
+    }
+}
 
 //eUSCI_B1
 pub struct PayloadSPIPins{
@@ -65,10 +82,11 @@ pub struct PayloadSPIPins{
     pub mosi: PayloadMOSIPin, 
     pub sck:  PayloadSCKPin, 
 }
-// Could be the pin type, but bitbang needs a different direction than standard.
-pub type PayloadMisoPort = P4; pub type PayloadMisoPin = Pin7;
-pub type PayloadMosiPort = P4; pub type PayloadMosiPin = Pin6;
-pub type PayloadSckPort  = P4; pub type PayloadSckPin  = Pin5;
+pub struct PayloadSPIBitBangPins{
+    pub miso: PayloadMISOBitBangPin, 
+    pub mosi: PayloadMOSIBitBangPin, 
+    pub sck:  PayloadSCKBitBangPin, 
+}
 
 //eUSCI_A1
 pub struct OBCSPIPins{
@@ -78,7 +96,10 @@ pub struct OBCSPIPins{
     pub chip_select:            OBCCSPin,
     pub chip_select_interrupt:  OBCCSInterruptPin, 
 }
-
+pub struct DebugSerialPins {
+    pub rx: DebugSerialRx,
+    pub tx: DebugSerialTx,
+}
 pub struct PayloadControlPins{
     pub payload_enable: PayloadEnablePin, // turns on most payload devices (power supplies, isolators, etc.)
     pub heater_enable:  HeaterEnablePin, // turns on heater step-down converter
@@ -87,9 +108,9 @@ pub struct PayloadControlPins{
 }
 
 pub struct DeploySensePins{
-    pub deploy_sense_1:         DeploySense1Pin, // Detects whether the endmass has ejected
-    pub deploy_sense_2:         DeploySense2Pin, // Detects whether the endmass has ejected
-    pub pinpuller_deploy_sense: PinpullerDeploySensePin, // Detects whether the pinpuller has deployed
+    pub endmass_sense_1:    EndmassSense1Pin, // Detects whether the endmass has ejected
+    pub endmass_sense_2:    EndmassSense2Pin, // Detects whether the endmass has ejected
+    pub pinpuller_sense:    PinpullerDeploySensePin, // Detects whether the pinpuller has deployed
 }
 
 pub struct TetherLMSPins{
@@ -102,6 +123,14 @@ pub struct PinpullerActivationPins{
     pub burn_wire_1_backup: BurnWire1BackupPin,
     pub burn_wire_2:        BurnWire2Pin,
     pub burn_wire_2_backup: BurnWire2BackupPin,
+}
+
+pub struct PayloadPeripherals{
+    pub digipot:        Digipot,
+    pub dac:            DAC,
+    pub tether_adc:     TetherADC, 
+    pub temperature_adc:TemperatureADC,
+    pub misc_adc:       MiscADC,
 }
 
 pub mod power_supply_limits {
@@ -118,8 +147,8 @@ pub mod power_supply_limits {
 pub mod peripheral_vcc_values {
     // VCC Supply voltages
     pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
-    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
-    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
+    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // Verify
+    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
     pub const PINPULLER_VOLTAGE_MILLIVOLTS: u16 = 3300; // TODO verify
 }
 
@@ -137,14 +166,14 @@ pub mod sensor_locations {
     pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
 
     //Temperature ADC
-    pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0};
-    pub const LMS_RECEIVER_TEMPERATURE_SENSOR:      TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN1};
-    pub const MSP430_TEMPERATURE_SENSOR:            TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN2};
-    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN3};
-    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN4};
-    pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5};
-    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR:  TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN6};
-    pub const MSP_3V3_TEMPERATURE_SENSOR:           TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN7};
+    pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0, vcc: VccType::LMS};
+    pub const LMS_RECEIVER_TEMPERATURE_SENSOR:      TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN1, vcc: VccType::LMS};
+    pub const MSP430_TEMPERATURE_SENSOR:            TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN2, vcc: VccType::Payload};
+    pub const HEATER_SUPPLY_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN3, vcc: VccType::Payload};
+    pub const HVDC_SUPPLIES_TEMPERATURE_SENSOR:     TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN4, vcc: VccType::Payload};
+    pub const TETHER_MONITORING_TEMPERATURE_SENSOR: TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN5, vcc: VccType::Payload};
+    pub const TETHER_CONNECTOR_TEMPERATURE_SENSOR:  TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN6, vcc: VccType::Payload};
+    pub const MSP_3V3_TEMPERATURE_SENSOR:           TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN7, vcc: VccType::Payload};
 
     // Misc ADC
     pub const PINPULLER_CURRENT_SENSOR: MiscSensor = MiscSensor{channel: ADCChannel::IN0};
@@ -166,6 +195,8 @@ pub mod power_supply_locations {
 /* Sensor equations. Takes in the voltage reported at the ADC (in millivolts) and produces the voltage/current being sensed in millivolts/milliamps */
 
 pub mod sensor_equations {
+    use fixed::{FixedI64, types::extra::U32};
+
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
         ((v_adc_millivolts as i32 * 1035)/310) as u16
     }
@@ -197,24 +228,25 @@ pub mod sensor_equations {
         ((v_adc_millivolts as u32 * 1000) / 1804) as u16
     }
 
-    use libm::log;
-
     //Returns temperature in Kelvin
     pub fn payload_temperature_eq(v_adc_millivolts: u16) -> u16 {
-        generic_temperature_eq(v_adc_millivolts, 5000.0)
+        generic_temperature_eq(v_adc_millivolts, 5000)
     }
     pub fn lms_temperature_eq(v_adc_millivolts: u16) -> u16 {
-        generic_temperature_eq(v_adc_millivolts, 3300.0)
+        generic_temperature_eq(v_adc_millivolts, 3300)
     }
-    fn generic_temperature_eq(v_adc_millivolts: u16, vcc: f32) -> u16 {
-        let log_millivolts = log(v_adc_millivolts as f64) as f32;
-        (1_028_100.0 / ( 705.0+298.0*(v_adc_millivolts as f32)*10_000.0/(vcc-log_millivolts) )) as u16
+    fn generic_temperature_eq(v_adc_millivolts: u16, vcc: u16) -> u16 {
+        let ln_millivolts_approx = FixedI64::<U32>::from(FixedI64::<U32>::from(v_adc_millivolts).int_log10()) / FixedI64::LOG10_E;
+        //let ln_millivolts_approx = (u16::ilog2(v_adc_millivolts) - u16::ilog10(v_adc_millivolts)) as u16; // approximate ln using integer logs
+        (FixedI64::<U32>::from(1_028_100) / ( FixedI64::<U32>::from(705)+298*(FixedI64::<U32>::from(v_adc_millivolts))*10_000/(FixedI64::<U32>::from(vcc)-ln_millivolts_approx) )).saturating_to_num()
     }
 }
 /* Supply control equations */
 pub mod power_supply_equations {
-    pub fn heater_target_voltage_to_digipot_resistance(millivolts: f32) -> u32{
-        (75_000.0 / ((millivolts)/810.0 - 1.0)) as u32
+    use fixed::{types::extra::U31, FixedI64};
+
+    pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
+        (FixedI64::<U31>::from(75_000) / ((FixedI64::<U31>::from(millivolts))/810 - FixedI64::<U31>::from(1))).saturating_to_num()
     }
 
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{

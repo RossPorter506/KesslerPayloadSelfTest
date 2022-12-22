@@ -1,6 +1,6 @@
 use core::{marker::PhantomData};
 
-use crate::pcb_mapping_v5::{OBCSPIPins, PayloadMisoPin, PayloadMosiPin, PayloadSckPin, PayloadMisoPort, PayloadSckPort, PayloadMosiPort};
+use crate::pcb_mapping_v5::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOSIBitBangPin, PayloadMISOBitBangPin, PayloadSCKBitBangPin}, PayloadSPIBitBangPins};
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin, InputPin};
 use msp430fr2x5x_hal::gpio::*;
 use crate::delay_cycles;
@@ -27,8 +27,8 @@ pub struct IdleLow; impl SckPolarity for IdleLow{}
 pub struct NoPolaritySet;
 
 pub trait SckPhase{}
-pub struct SampleRisingEdge; impl SckPhase for SampleRisingEdge{}
-pub struct SampleFallingEdge; impl SckPhase for SampleFallingEdge{}
+pub struct SampleFirstEdge; impl SckPhase for SampleFirstEdge{}
+pub struct SampleSecondEdge; impl SckPhase for SampleSecondEdge{}
 pub struct NoPhaseSet;
 
 pub struct OBCSPIBitBang{
@@ -110,21 +110,30 @@ impl OBCSPI for OBCSPIBitBang {
 }
 
 // Constructor for PayloadSPI
-// Ex: .new().sck_idle_low().sample_on_rising_edge().create()
+// Ex: .new().sck_idle_low().sample_on_first_edge().create()
+// All peripherals use the 'sample on first edge' phase, but it doesn't hurt to have the second edge stuff.
 pub struct PayloadSPIBitBangConfig<Polarity,Phase>{
-    pub miso:   Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-    pub mosi:   Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-    pub sck:    Pin<PayloadSckPort, PayloadSckPin, Output>, 
+    pub miso:   PayloadMISOBitBangPin, 
+    pub mosi:   PayloadMOSIBitBangPin, 
+    pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
 }
 impl PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
-    pub fn new( miso: Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-                mosi: Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-                sck: Pin<PayloadSckPort, PayloadSckPin, Output>) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
+    pub fn new_from_pins( miso: PayloadMISOBitBangPin, 
+                mosi: PayloadMOSIBitBangPin, 
+                sck: PayloadSCKBitBangPin) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
         PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   miso, mosi, sck,
                                                                 _polarity: PhantomData,
                                                                 _phase: PhantomData, }
+    }
+    pub fn new_from_struct( pins: PayloadSPIBitBangPins) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
+        PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   
+            miso: pins.miso, 
+            mosi: pins.mosi, 
+            sck: pins.sck,
+            _polarity: PhantomData,
+            _phase: PhantomData, }
     }
 }
 impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
@@ -138,11 +147,11 @@ impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
     }
 }
 impl<Polarity, NoPhaseSet> PayloadSPIBitBangConfig<Polarity, NoPhaseSet>{
-    pub fn sample_on_rising_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleRisingEdge> {
-        PayloadSPIBitBangConfig::<Polarity, SampleRisingEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+    pub fn sample_on_first_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleFirstEdge> {
+        PayloadSPIBitBangConfig::<Polarity, SampleFirstEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
-    pub fn sample_on_falling_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleFallingEdge> {
-        PayloadSPIBitBangConfig::<Polarity, SampleFallingEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+    pub fn sample_on_second_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleSecondEdge> {
+        PayloadSPIBitBangConfig::<Polarity, SampleSecondEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
 impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBangConfig<Polarity, Phase>{
@@ -152,9 +161,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBangConfig<Polarity, P
 }
 
 pub struct PayloadSPIBitBang<Polarity: SckPolarity, Phase: SckPhase>{
-    pub miso:   Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-    pub mosi:   Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-    pub sck:    Pin<PayloadSckPort, PayloadSckPin, Output>, 
+    pub miso:   PayloadMISOBitBangPin, 
+    pub mosi:   PayloadMOSIBitBangPin, 
+    pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
 }
@@ -165,9 +174,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
-            delay_cycles(40); // duty cycle correction
+            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
         result
@@ -177,9 +186,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            delay_cycles(40); // duty cycle correction
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
             current_pos += 1;
         }
         result
@@ -188,13 +197,13 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            delay_cycles(80); // duty cycle correction
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
-            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -202,14 +211,14 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
     fn send_on_second_edge(&mut self, len: u8, data: u32) {
         let mut current_pos: u8 = 0;
         while current_pos < len {
-            self.sck.toggle().ok();
-            delay_cycles(80); // duty cycle correction
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            if (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
+            self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -218,15 +227,15 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
         while current_pos < len {
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
+            delay_cycles(80); // duty cycle correction
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
-            self.sck.toggle().ok();
-            delay_cycles(80); // duty cycle correction
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -237,24 +246,22 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             
-            self.sck.toggle().ok();
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
-            delay_cycles(80); // duty cycle correction
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
             self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
+            self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
         result
     }
-    pub fn return_pins(self) -> (Pin<PayloadMisoPort, PayloadMisoPin, Input<Pulldown>>, 
-                                 Pin<PayloadMosiPort, PayloadMosiPin, Output>, 
-                                 Pin<PayloadSckPort, PayloadSckPin, Output>){
-        (self.miso, self.mosi, self.sck)
+    pub fn return_pins(self) -> PayloadSPIPins {
+        PayloadSPIPins{miso:self.miso.to_output().to_alternate1(), mosi:self.mosi.to_alternate1(), sck:self.sck.to_alternate1()}
     }
 }
 // Transformation functions
@@ -270,33 +277,33 @@ impl<Phase: SckPhase> PayloadSPIBitBang<IdleLow, Phase>{
         PayloadSPIBitBang::<IdleHigh, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
-impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleFallingEdge>{
-    pub fn into_sample_rising_edge(self) -> PayloadSPIBitBang<Polarity, SampleRisingEdge> {
-        PayloadSPIBitBang::<Polarity, SampleRisingEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleSecondEdge>{
+    pub fn into_sample_first_edge(self) -> PayloadSPIBitBang<Polarity, SampleFirstEdge> {
+        PayloadSPIBitBang::<Polarity, SampleFirstEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
-impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleRisingEdge>{
-    pub fn into_sample_falling_edge(self) -> PayloadSPIBitBang<Polarity, SampleFallingEdge> {
-        PayloadSPIBitBang::<Polarity, SampleFallingEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleFirstEdge>{
+    pub fn into_sample_second_edge(self) -> PayloadSPIBitBang<Polarity, SampleSecondEdge> {
+        PayloadSPIBitBang::<Polarity, SampleSecondEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
 // Actual trait implementations
-impl PayloadSPI<IdleHigh, SampleRisingEdge> for PayloadSPIBitBang<IdleHigh, SampleRisingEdge> {
+impl PayloadSPI<IdleHigh, SampleSecondEdge> for PayloadSPIBitBang<IdleHigh, SampleSecondEdge> {
     fn send(&mut self, len: u8, data: u32) { self.send_on_first_edge(len, data) }
     fn receive(&mut self, len: u8) -> u32  { self.receive_on_second_edge(len) }
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_first_receive_on_second(len, data) }
 }
-impl PayloadSPI<IdleHigh, SampleFallingEdge> for PayloadSPIBitBang<IdleHigh, SampleFallingEdge> {
+impl PayloadSPI<IdleHigh, SampleFirstEdge> for PayloadSPIBitBang<IdleHigh, SampleFirstEdge> {
     fn send(&mut self, len: u8, data: u32) { self.send_on_second_edge(len, data) }
     fn receive(&mut self, len: u8) -> u32  { self.receive_on_first_edge(len) }
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_second_receive_on_first(len, data) }
 }
-impl PayloadSPI<IdleLow, SampleRisingEdge> for PayloadSPIBitBang<IdleLow, SampleRisingEdge> {
+impl PayloadSPI<IdleLow, SampleFirstEdge> for PayloadSPIBitBang<IdleLow, SampleFirstEdge> {
     fn send(&mut self, len: u8, data: u32) { self.send_on_second_edge(len, data) }
     fn receive(&mut self, len: u8) -> u32  { self.receive_on_first_edge(len) }
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_second_receive_on_first(len, data) }
 }
-impl PayloadSPI<IdleLow, SampleFallingEdge> for PayloadSPIBitBang<IdleLow, SampleFallingEdge> {
+impl PayloadSPI<IdleLow, SampleSecondEdge> for PayloadSPIBitBang<IdleLow, SampleSecondEdge> {
     fn send(&mut self, len: u8, data: u32) { self.send_on_first_edge(len, data) }
     fn receive(&mut self, len: u8) -> u32  { self.receive_on_second_edge(len) }
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_first_receive_on_second(len, data) }
