@@ -6,12 +6,12 @@ use digipot::Digipot;
 use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, SmclkDiv, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
 #[allow(unused_imports)]
 use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
-use ufmt::uwrite;
+use ufmt::{uwrite, uwriteln};
 
 mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins};
 mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow};
@@ -33,12 +33,16 @@ fn main() -> ! {
     let (payload_spi_pins, 
         mut pinpuller_pins, 
         mut led_pins, 
-        payload_control_pins, 
+        mut payload_control_pins, 
         mut lms_control_pins, 
         deploy_sense_pins, 
-        payload_peripheral_cs_pins, 
+        mut payload_peripheral_cs_pins, 
         debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
     
+    payload_control_pins.cathode_switch.set_low().ok();
+    payload_control_pins.tether_switch.set_low().ok();
+    payload_peripheral_cs_pins.disable_all();
+
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
     //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
@@ -52,9 +56,9 @@ fn main() -> ! {
 
     let mut fram = Fram::new(periph.FRCTL);
 
-    let (smclock, _aclock) = ClockConfig::new(periph.CS)
+    let aclk = ClockConfig::new(periph.CS)
         .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
-        .smclk_on(SmclkDiv::_1)
+        .smclk_off()
         .freeze(&mut fram);
     
     let (serial_tx_pin, serial_rx_pin) = SerialConfig::new(  
@@ -64,33 +68,34 @@ fn main() -> ! {
         StopBits::OneStopBit,
         Parity::NoParity,
         Loopback::NoLoop,
-        115200)
-        .use_smclk(&smclock)
+        9600)
+        .use_aclk(&aclk)
         .split(debug_serial_pins.tx, debug_serial_pins.rx);
-
+    
     let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
     let mut payload = PayloadBuilder::new_enabled_payload(payload_peripherals, payload_control_pins);
 
-    let mut payload_spi_bus = payload_spi_bus.into_idle_high();
+    payload.pins.heater_enable.set_low().ok();
 
+    let mut payload_spi_bus = payload_spi_bus.into_idle_high();
+    
     AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
     AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
-    
-    idle_loop(&mut led_pins, &mut serial_writer);
+    idle_loop(&mut led_pins);
 }
 
-fn idle_loop<USCI:SerialUsci>(led_pins: &mut LEDPins, serial_writer:&mut SerialWriter<USCI>) -> ! {
+fn idle_loop(led_pins: &mut LEDPins) -> ! {
     let mut counter: u8 = 0;
     loop {
         snake_leds(&mut counter, led_pins);
-        uwrite!(serial_writer, "Hello, World!\r\n").ok();
+        //uwrite!(serial_writer, "Hello, World!\r\n").ok();
         delay_cycles(45000);
     }
 }
 
 fn delay_cycles(num_cycles: u32){ //approximate delay fn
-    let delay = (19*num_cycles + 13*num_cycles)/32;
+    let delay = (6*num_cycles)/128;
     for _ in 0..delay {
         msp430::asm::nop()
     }

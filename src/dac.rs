@@ -34,7 +34,9 @@ pub struct DAC {
 impl DAC{
     pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) -> DAC {
         let mut dac = DAC{cs_pin};
+        dac.cs_pin.set_low().ok();
         dac.init(spi_bus);
+        dac.cs_pin.set_high().ok();
         dac
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 

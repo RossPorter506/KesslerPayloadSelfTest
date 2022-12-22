@@ -29,9 +29,9 @@ impl Digipot {
     }
     pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>){
         let payload = ((channel as u16) << 8 + count) as u32;
-        let _ = self.cs_pin.set_low();
+        self.cs_pin.set_low().ok();
         spi_bus.send(16, payload);
-        let _ = self.cs_pin.set_high();
+        self.cs_pin.set_high().ok();
     }
     pub fn resistance_to_count(&self, mut wanted_resistance: u32) -> u8{
         wanted_resistance = enforce_bounds( DIGIPOT_WIPER_RESISTANCE, 

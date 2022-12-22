@@ -174,9 +174,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
-            delay_cycles(40); // duty cycle correction
+            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
         result
@@ -186,9 +186,9 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            delay_cycles(40); // duty cycle correction
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
             current_pos += 1;
         }
         result
@@ -197,13 +197,13 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             self.sck.toggle().ok();
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            delay_cycles(80); // duty cycle correction
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
-            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -211,14 +211,14 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
     fn send_on_second_edge(&mut self, len: u8, data: u32) {
         let mut current_pos: u8 = 0;
         while current_pos < len {
-            self.sck.toggle().ok();
-            delay_cycles(80); // duty cycle correction
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            if (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
+            self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -227,15 +227,15 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
         while current_pos < len {
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
+            delay_cycles(80); // duty cycle correction
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
-            self.sck.toggle().ok();
-            delay_cycles(80); // duty cycle correction
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             self.sck.toggle().ok();
             current_pos += 1;
         }
@@ -246,16 +246,16 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
         let mut current_pos: u8 = 0;
         while current_pos < len {
             
-            self.sck.toggle().ok();
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
-            delay_cycles(80); // duty cycle correction
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) == 1_u32 {
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
             self.sck.toggle().ok();
+            delay_cycles(80); // duty cycle correction
+            self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
         result

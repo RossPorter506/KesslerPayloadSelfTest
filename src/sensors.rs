@@ -30,6 +30,7 @@ impl PayloadBuilder{
     pub fn new_enabled_payload( periph: PayloadPeripherals,
                                 mut pins: PayloadControlPins) -> PayloadController<PayloadOn> {
         pins.payload_enable.set_high().ok();
+        pins.heater_enable.set_high().ok();
         PayloadController::<PayloadOn>{tether_adc: periph.tether_adc, temperature_adc: periph.temperature_adc, misc_adc: periph.misc_adc, dac: periph.dac, digipot: periph.digipot, pins, _state: PhantomData}
     }
     pub fn new_disabled_payload(periph: PayloadPeripherals,
@@ -91,6 +92,7 @@ impl<STATE: PayloadState> PayloadController<STATE>{
 impl PayloadController<PayloadOff>{
     pub fn into_enabled_payload(mut self) -> PayloadController<PayloadOn> {
         self.pins.payload_enable.set_high().ok();
+        self.pins.heater_enable.set_high().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins, _state: PhantomData }
     }

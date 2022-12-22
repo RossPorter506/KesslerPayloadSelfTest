@@ -47,6 +47,7 @@ pub mod pin_name_types {
     pub type TetherLMSReceiverEnablePin = Pin<P3, Pin4, Output>;
     pub type TetherLMSLEDEnablePin = Pin<P3, Pin5, Output>;
 }
+use embedded_hal::digital::v2::OutputPin;
 use pin_name_types::*;
 
 use crate::{adc::{MiscADC, TetherADC, TemperatureADC}, dac::DAC, digipot::Digipot};
@@ -64,6 +65,15 @@ pub struct PayloadSPIChipSelectPins{
     pub tether_adc:     TetherADCCSPin, //ADC1, measures voltages and currents from tether circuitry
     pub temperature_adc:TemperatureADCCSPin, //ADC2, measures board temperatures
     pub misc_adc:       MiscADCCSPin, //ADC0, measures everything else
+}
+impl PayloadSPIChipSelectPins {
+    pub fn disable_all(&mut self) {
+        self.digipot.set_high().ok();
+        self.dac.set_high().ok();
+        self.tether_adc.set_high().ok();
+        self.temperature_adc.set_high().ok();
+        self.misc_adc.set_high().ok();
+    }
 }
 
 //eUSCI_B1
@@ -137,8 +147,8 @@ pub mod power_supply_limits {
 pub mod peripheral_vcc_values {
     // VCC Supply voltages
     pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
-    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // Verify
-    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5100; // TODO: Verify
+    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // Verify
+    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
     pub const PINPULLER_VOLTAGE_MILLIVOLTS: u16 = 3300; // TODO verify
 }
 
