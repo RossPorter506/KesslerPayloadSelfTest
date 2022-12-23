@@ -76,34 +76,30 @@ impl MiscADC{
         ADC::<MiscADCCSPin, MiscSensor>{vcc_millivolts: ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
     }
 }
+
+const AQUIRE_CYCLES: u8 = 4;
+const TRANSMIT_CYCLES: u8 = 12;
+pub const NUM_CYCLES_FOR_ONE_READING: u8 = AQUIRE_CYCLES + TRANSMIT_CYCLES;
+pub const NUM_CYCLES_FOR_TWO_READINGS: u8 = NUM_CYCLES_FOR_ONE_READING * 2;
+
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
     pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> u16{
-        let result: u16;
-        let _ = self.cs_pin.set_low();
+        let reading: u16;
         
         if wanted_sensor.channel() == ADCChannel::IN0 {
-            spi_bus.receive(4);
-            result = spi_bus.receive(12) as u16;
+            reading = spi_bus.receive(NUM_CYCLES_FOR_ONE_READING, &mut self.cs_pin) as u16;
         }
         else{
-            // ADC takes four cycles to track signal. Nothing to do for first two.
-            spi_bus.receive(2);
+            // We need to send the channel we want to read two edges after the start, and it's three bits long.
+            // SPI will always send the LSB during the last edge, so we need to shift it until there are only two zeroes in front, i.e. 00XXX0000...
+            // 1 << 31 would put the one-bit-long payload in the MSB, so shift by two fewer for a three-bit payload, and two fewer again to have two zeroes out front
+            let data_packet = (wanted_sensor.channel() as u32) << (NUM_CYCLES_FOR_TWO_READINGS-1 - 2 - 2);
 
-            // Send channel. ADC Sends the first bit of IN0, which we don't care about.
-            spi_bus.send(3, wanted_sensor.channel() as u32);
-
-            //Wait out the rest of the IN0 reading being sent to us
-            spi_bus.receive(11);
-
-            // ADC is now tracking the channel we want
-            spi_bus.receive(4);
-
-            //Finally receive ADC value from the channel we care about
-            result = spi_bus.receive(12) as u16;
+            let result = spi_bus.send_and_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut self.cs_pin);
+            reading = (result & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
         }
-        let _ = self.cs_pin.set_high();
-        result
+        reading
     }
     pub fn count_to_voltage(&self, count: u16) -> u16{
         ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16

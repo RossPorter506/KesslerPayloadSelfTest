@@ -41,7 +41,6 @@ fn main() -> ! {
     
     payload_control_pins.cathode_switch.set_low().ok();
     payload_control_pins.tether_switch.set_low().ok();
-    payload_peripheral_cs_pins.disable_all();
 
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
@@ -141,7 +140,7 @@ let port5 = Batch::new(p5).split(&pmm);
 let port6 = Batch::new(p6).split(&pmm);
 
 let payload_spi_pins = PayloadSPIBitBangPins {
-    miso: port4.pin7.pulldown(),
+    miso: port4.pin7.pullup(),
     mosi: port4.pin6.to_output(),
     sck:  port4.pin5.to_output(),};
 
@@ -171,12 +170,13 @@ let deploy_sense_pins = DeploySensePins{
     endmass_sense_2: port3.pin1.pulldown(),
     pinpuller_sense: port5.pin3.pullup()};
 
-let payload_peripheral_cs_pins = PayloadSPIChipSelectPins {
-    dac:             port6.pin3.to_output(),
-    digipot:         port6.pin4.to_output(),
-    tether_adc:      port6.pin2.to_output(),
-    temperature_adc: port6.pin0.to_output(),
-    misc_adc:        port5.pin4.to_output(),};
+    // in lieu of stateful output pins, constructor sets all pins high, 
+let payload_peripheral_cs_pins = PayloadSPIChipSelectPins::new(
+    port6.pin4.to_output(), 
+    port6.pin3.to_output(), 
+    port6.pin2.to_output(), 
+    port6.pin0.to_output(), 
+    port5.pin4.to_output(), );
 
 let debug_serial_pins = DebugSerialPins{
     rx: port4.pin2.to_output().to_alternate1(),

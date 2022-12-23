@@ -46,30 +46,11 @@ impl AutomatedFunctionalTests{
             adc: &mut ADC<CsPin, SENSOR>, 
             spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>,
             wanted_channel: ADCChannel) -> bool {
-        let adc_channel_msb = ((wanted_channel as u32) & 0b100) >> 2;
-        let rest_of_adc_channel = (wanted_channel as u32) & 0b11;
-        adc.cs_pin.set_low().ok();
-        // ADC takes four cycles to track signal. Nothing to do for first two.
-        let zeroes_1 = spi_bus.receive(2);
+        let data_packet = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS-1 - 2 - 2); // see adc.rs
+        let result = spi_bus.send_and_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut adc.cs_pin);
+        let zeroes = result & 0xF000_F000;
 
-        // Send first bit of channel. Receive third and fourth zero.
-        let zeroes_2 = spi_bus.send_and_receive(2, adc_channel_msb);
-
-        // Send other two channel bits. Receive beginning of IN0 - could have any value.
-        spi_bus.send(2, rest_of_adc_channel);
-
-        //Wait out the rest of the IN0 reading being sent to us
-        spi_bus.receive(11);
-
-        // ADC is now tracking IN7. Receive zeroes while it tracks
-        let zeroes_3 = spi_bus.receive(4);
-
-        //Finally receive ADC value from the channel we care about
-        spi_bus.receive(12);
-
-        adc.cs_pin.set_high().ok();
-
-        zeroes_1 == 0 && zeroes_2 == 0 && zeroes_3 == 0
+        zeroes == 0
     }
 
     // Ask to read channel 7.
@@ -222,7 +203,7 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFirstEdge>{
     let pmm = Pmm::new(periph.PMM);
     let port4 = Batch::new(periph.P4).split(&pmm);
     PayloadSPIBitBangConfig::new_from_pins(   
-        port4.pin7.pulldown(),
+        port4.pin7.pullup(),
         port4.pin6.to_output(),
         port4.pin5.to_output(),)
         .sck_idle_high()

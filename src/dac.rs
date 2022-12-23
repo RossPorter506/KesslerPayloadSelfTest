@@ -34,20 +34,13 @@ pub struct DAC {
 impl DAC{
     pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) -> DAC {
         let mut dac = DAC{cs_pin};
-        dac.cs_pin.set_low().ok();
-        dac.init(spi_bus);
-        dac.cs_pin.set_high().ok();
+        dac.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
         dac
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
                         spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) {
-        self.cs_pin.set_low().ok();
         let payload: u32 = ((command as u32) << 20) | ((channel as u32) << 16) | ((value as u32) << 4);
-        spi_bus.send(24, payload);
-        self.cs_pin.set_high().ok();
-    }
-    fn init(&mut self, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>){
-        self.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
+        spi_bus.send(24, payload, &mut self.cs_pin);
     }
     pub fn voltage_to_count(&self, mut target_millivolts: u16) -> u16{
         if target_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {

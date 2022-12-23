@@ -14,9 +14,9 @@ pub trait OBCSPI{
     fn send_and_receive(&mut self, len: u8, data: u32) -> u32;
 }
 pub trait PayloadSPI<Polarity: SckPolarity, Phase: SckPhase>{
-    fn send(&mut self, len: u8, data: u32);
-    fn receive(&mut self, len: u8) -> u32;
-    fn send_and_receive(&mut self, len: u8, data: u32) -> u32;
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin);
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32;
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32;
 }
 
 // Some peripherals expect the bus left high or low when idle, and some read rising edges while others read falling edges.
@@ -169,9 +169,10 @@ pub struct PayloadSPIBitBang<Polarity: SckPolarity, Phase: SckPhase>{
 }
 //Internal functions to reduce code duplication. (IdleHigh and SampleRising) == (IdleLow and SampleFalling), except the initial state of the clock is inverted. Vice versa for the other pair
 impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
-    fn receive_on_first_edge(&mut self, len: u8) -> u32 {
+    fn receive_on_first_edge(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32 {
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             self.sck.toggle().ok();
             delay_cycles(80); // duty cycle correction
@@ -179,11 +180,13 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
         result
     }
-    fn receive_on_second_edge(&mut self, len: u8) -> u32 {
+    fn receive_on_second_edge(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32 {
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             self.sck.toggle().ok();
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
@@ -191,10 +194,12 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             delay_cycles(80); // duty cycle correction
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
         result
     }
-    fn send_on_first_edge(&mut self, len: u8, data: u32) {
+    fn send_on_first_edge(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             self.sck.toggle().ok();
             delay_cycles(80); // duty cycle correction
@@ -207,9 +212,11 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             self.sck.toggle().ok();
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
     }
-    fn send_on_second_edge(&mut self, len: u8, data: u32) {
+    fn send_on_second_edge(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             if (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
@@ -222,10 +229,12 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             self.sck.toggle().ok();
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
     }
-    fn send_on_first_receive_on_second(&mut self, len: u8, data: u32) -> u32{
+    fn send_on_first_receive_on_second(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             self.sck.toggle().ok();
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
@@ -239,11 +248,13 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             self.sck.toggle().ok();
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
         result
     }
-    fn send_on_second_receive_on_first(&mut self, len: u8, data: u32) -> u32{
+    fn send_on_second_receive_on_first(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
         while current_pos < len {
             
             if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
@@ -258,6 +269,7 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
             current_pos += 1;
         }
+        cs_pin.set_high().ok();
         result
     }
     pub fn return_pins(self) -> PayloadSPIPins {
@@ -289,24 +301,24 @@ impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleFirstEdge>{
 }
 // Actual trait implementations
 impl PayloadSPI<IdleHigh, SampleSecondEdge> for PayloadSPIBitBang<IdleHigh, SampleSecondEdge> {
-    fn send(&mut self, len: u8, data: u32) { self.send_on_first_edge(len, data) }
-    fn receive(&mut self, len: u8) -> u32  { self.receive_on_second_edge(len) }
-    fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_first_receive_on_second(len, data) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
 impl PayloadSPI<IdleHigh, SampleFirstEdge> for PayloadSPIBitBang<IdleHigh, SampleFirstEdge> {
-    fn send(&mut self, len: u8, data: u32) { self.send_on_second_edge(len, data) }
-    fn receive(&mut self, len: u8) -> u32  { self.receive_on_first_edge(len) }
-    fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_second_receive_on_first(len, data) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
 }
 impl PayloadSPI<IdleLow, SampleFirstEdge> for PayloadSPIBitBang<IdleLow, SampleFirstEdge> {
-    fn send(&mut self, len: u8, data: u32) { self.send_on_second_edge(len, data) }
-    fn receive(&mut self, len: u8) -> u32  { self.receive_on_first_edge(len) }
-    fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_second_receive_on_first(len, data) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
 }
 impl PayloadSPI<IdleLow, SampleSecondEdge> for PayloadSPIBitBang<IdleLow, SampleSecondEdge> {
-    fn send(&mut self, len: u8, data: u32) { self.send_on_first_edge(len, data) }
-    fn receive(&mut self, len: u8) -> u32  { self.receive_on_second_edge(len) }
-    fn send_and_receive(&mut self, len: u8, data: u32) -> u32 { self.send_on_first_receive_on_second(len, data) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
 
 

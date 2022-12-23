@@ -17,7 +17,7 @@ pub mod pin_name_types {
     pub type PayloadMOSIPin = Pin<P4, Pin6, Alternate1<Output>>;
     pub type PayloadSCKPin =  Pin<P4, Pin5, Alternate1<Output>>;
 
-    pub type PayloadMISOBitBangPin = Pin<P4, Pin7, Input<Pulldown>>; // bitbang version
+    pub type PayloadMISOBitBangPin = Pin<P4, Pin7, Input<Pullup>>; // bitbang version
     pub type PayloadMOSIBitBangPin = Pin<P4, Pin6, Output>;
     pub type PayloadSCKBitBangPin =  Pin<P4, Pin5, Output>;
 
@@ -67,12 +67,14 @@ pub struct PayloadSPIChipSelectPins{
     pub misc_adc:       MiscADCCSPin, //ADC0, measures everything else
 }
 impl PayloadSPIChipSelectPins {
-    pub fn disable_all(&mut self) {
-        self.digipot.set_high().ok();
-        self.dac.set_high().ok();
-        self.tether_adc.set_high().ok();
-        self.temperature_adc.set_high().ok();
-        self.misc_adc.set_high().ok();
+    pub fn new(mut digipot: DigipotCSPin, mut dac: DACCSPin, mut tether_adc: TetherADCCSPin, mut temperature_adc: TemperatureADCCSPin, mut misc_adc: MiscADCCSPin) -> PayloadSPIChipSelectPins{
+        digipot.set_high().ok(); // in lieu of accepting stateful output pins just set them high in the constructor
+        dac.set_high().ok();
+        tether_adc.set_high().ok();
+        temperature_adc.set_high().ok();
+        misc_adc.set_high().ok();
+
+        PayloadSPIChipSelectPins{digipot, dac, tether_adc, temperature_adc, misc_adc}
     }
 }
 
