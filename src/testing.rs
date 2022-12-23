@@ -7,7 +7,7 @@ use replace_with::replace_with;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
-use crate::sensors::{PayloadController, PayloadOn, PayloadState, PayloadOff};
+use crate::sensors::{PayloadController, PayloadOn, PayloadState, PayloadOff, HeaterState, HeaterOn, SwitchState};
 use crate::serial::SerialWriter;
 #[allow(unused_imports)]
 use crate::{spi::*, adc::*, digipot::*, dac::*};
@@ -20,7 +20,7 @@ use fixed::{self, FixedI64};
 pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
     pub fn full_system_test<USCI:SerialUsci>(
-            payload: &mut PayloadController<PayloadOn>, 
+            payload: &mut PayloadController<PayloadOn, HeaterOn>, 
             pinpuller_pins: &mut PinpullerActivationPins, 
             lms_pins: &mut TetherLMSPins,
             spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
@@ -56,8 +56,8 @@ impl AutomatedFunctionalTests{
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: Isolated 5V supply, tether ADC, isolators
-    pub fn tether_adc_functional_test<'a>(
-            payload: &'a mut PayloadController<PayloadOn>, 
+    pub fn tether_adc_functional_test<'a, DONTCARE:HeaterState>(
+            payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.tether_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Tether ADC", result }
@@ -66,8 +66,8 @@ impl AutomatedFunctionalTests{
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: temperature ADC
-    pub fn temperature_adc_functional_test<'a, DONTCARE: PayloadState>(
-            payload: &'a mut PayloadController<DONTCARE>, 
+    pub fn temperature_adc_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+            payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.temperature_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Temperature ADC", result }
@@ -76,8 +76,8 @@ impl AutomatedFunctionalTests{
     // Ask to read channel 7.
     // Return success if SPI packet valid
     // Dependencies: misc ADC
-    pub fn misc_adc_functional_test<'a, DONTCARE: PayloadState>(
-            payload: &'a mut PayloadController<DONTCARE>, 
+    pub fn misc_adc_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+            payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
         let result =Self::test_adc_functional(&mut payload.misc_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Misc ADC", result }
@@ -94,9 +94,9 @@ impl AutomatedFunctionalTests{
 
     // Dependencies: pinpuller, pinpuller current sensor, misc ADC
     // Setup: Place 2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
-    pub fn pinpuller_functional_test<'a, DONTCARE:PayloadState>(   
+    pub fn pinpuller_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(   
             pins: &'a mut PinpullerActivationPins, 
-            payload: &'a mut PayloadController<DONTCARE>,
+            payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>,
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> [SensorResult<'a>; 4] {
         const ON_MILLIAMP_THRESHOLD: u16 = 1000; // TODO: Figure out threshhold
         let mut results = [false; 4];
@@ -125,11 +125,11 @@ impl AutomatedFunctionalTests{
 
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     pub fn heater_functional_test<'a>(
-            payload: &'a mut PayloadController<PayloadOn>, 
+            payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
             spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
-        // Set heater voltage to minimum
-        // To do this we need to temporarily take ownership (can't move out of borrowed reference) of the bus to change it's typestate to talk to digipot.
-        // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the bool. Neither option is really that clean.
+        // Because we're alternating between talking with the ADCs (which expect IdleHigh) and the digipot (which expects IdleLow), we need to temporarily move outside a borrowed value.
+        // To do this we need to temporarily take ownership of the bus to change it's typestate using the 'replace with' function.
+        // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the result. Neither option is really that clean.
 
         let mut min_voltage_mv: u16 = 0;
         let mut max_voltage_mv: u16 = 0;
@@ -161,8 +161,8 @@ impl AutomatedFunctionalTests{
     }
     // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
-    pub fn lms_functional_test<'a, DONTCARE:PayloadState>(
-            payload: &'a mut PayloadController<DONTCARE>, 
+    pub fn lms_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+            payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             lms_control: &'a mut TetherLMSPins, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [SensorResult<'a>;3] {
         let mut ambient_counts: [u16; 3] = [0; 3];
@@ -249,7 +249,7 @@ fn min<T: PartialOrd>(a:T, b:T) -> T {
 pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
     pub fn full_system_test<USCI:SerialUsci>(
-            payload: &mut PayloadController<PayloadOn>, 
+            payload: &mut PayloadController<PayloadOn, HeaterOn>, 
             pinpuller_pins: &mut PinpullerActivationPins,
             spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
             serial: &mut SerialWriter<USCI>){
@@ -266,15 +266,15 @@ impl AutomatedPerformanceTests{
     }
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between exterior and cathode-
-    pub fn test_cathode_offset<'a>(
-            payload: &'a mut PayloadController<PayloadOn>, 
+    pub fn test_cathode_offset<'a, DONTCARE:HeaterState>(
+            payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
         let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
 
-        payload.pins.cathode_switch.set_high().ok(); // connect to exterior
+        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
 
@@ -298,7 +298,7 @@ impl AutomatedPerformanceTests{
             voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(cathode_offset_voltage_mv, expected_voltage_mv),i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(cathode_offset_current_ua, expected_current_ua),i as u16);
         }
-        payload.pins.cathode_switch.set_low().ok();
+        payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
         let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
         let current_result = calculate_performance_result("Cathode offset current", current_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
@@ -307,15 +307,15 @@ impl AutomatedPerformanceTests{
     // Almost identical code, feels bad man
     // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between tether and cathode-
-    pub fn test_tether_bias<'a>(
-            payload: &'a mut PayloadController<PayloadOn>, 
+    pub fn test_tether_bias<'a, DONTCARE:HeaterState>(
+            payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
         let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
 
-        payload.pins.tether_switch.set_high().ok(); // connect to tether
+        payload.set_tether_bias_switch(SwitchState::Connected); // connect to tether
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
 
@@ -338,7 +338,7 @@ impl AutomatedPerformanceTests{
             voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(tether_bias_voltage_mv, expected_voltage_mv),i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(tether_bias_current_ua, expected_current_ma),i as u16);
         }
-        payload.pins.tether_switch.set_low().ok();
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
 
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
         let current_result = calculate_performance_result("Tether bias current", current_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
@@ -401,7 +401,7 @@ impl AutomatedPerformanceTests{
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
     pub fn test_heater<'a>(
-            payload: &'a mut PayloadController<PayloadOn>, 
+            payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         let heater_resistance = FixedI64::<U32>::from(10) + FixedI64::<U32>::from(1) / 100; // heater resistance + shunt resistor
@@ -442,8 +442,8 @@ impl AutomatedPerformanceTests{
     
     // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     // Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
-    pub fn test_pinpuller_current_sensor<'a, DONTCARE:PayloadState>(
-            payload: &'a mut PayloadController<DONTCARE>, 
+    pub fn test_pinpuller_current_sensor<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+            payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             p_pins: &'a mut PinpullerActivationPins, 
             spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> PerformanceResult<'a> {
         const EXPECTED_OFF_CURRENT: u16 = 0;
@@ -545,9 +545,9 @@ impl ManualFunctionalTests{
 
 const TEMPERATURE_SENSOR_SUCCESS: u8 = 5; // within 5% of true value, etc
 const TEMPERATURE_SENSOR_INACCURATE: u8 = 20;
-fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, USCI:SerialUsci>(
+fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, ALSODONTCARE:HeaterState, USCI:SerialUsci>(
         room_temp_k: u16,
-        payload: &'a mut PayloadController<DONTCARE>,
+        payload: &'a mut PayloadController<DONTCARE, ALSODONTCARE>,
         serial_writer: &'a mut SerialWriter<USCI>,
         serial_reader: &'a mut Rx<USCI>, 
         spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'static>; 8]{
@@ -621,8 +621,8 @@ impl ManualPerformanceTests{
             }
         };
     }
-    pub fn two_point_test_temperature_sensor_test<'a, USCI:SerialUsci>( 
-            payload: &'a mut PayloadController<PayloadOff>, // Minimise heat generation
+    pub fn two_point_test_temperature_sensor_test<'a, USCI:SerialUsci, DONTCARE:HeaterState>( 
+            payload: &'a mut PayloadController<PayloadOff, DONTCARE>, // Minimise heat generation
             serial_writer: &'a mut SerialWriter<USCI>,
             serial_reader: &'a mut Rx<USCI>, 
             spi_bus: &'a mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 8]{

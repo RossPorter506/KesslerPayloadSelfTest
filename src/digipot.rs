@@ -3,9 +3,12 @@
 
 
 // Digipot parameters
-pub const DIGIPOT_MAX_RESISTANCE: u32 = 100000;
+pub const DIGIPOT_MAX_RESISTANCE: u32 = 100_000;
 pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
 pub const DIGIPOT_RESOLUTION: u32 = 255;
+const DIGIPOT_NUM_ADDRESS_BITS: u8 = 1;
+const DIGIPOT_NUM_DATA_BITS: u8 = 8;
+const DIGIPOT_NUM_BITS_IN_PACKET: u8 = DIGIPOT_NUM_ADDRESS_BITS + DIGIPOT_NUM_DATA_BITS;
 
 use crate::{spi::{PayloadSPI, IdleLow, SampleFirstEdge}, pcb_mapping_v5::pin_name_types::DigipotCSPin};
 use crate::sensors::enforce_bounds;
@@ -27,8 +30,8 @@ impl Digipot {
         self.set_channel_to_count(channel, count, spi_bus);
     }
     pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>){
-        let payload = ((channel as u16) << 8 + count) as u32;
-        spi_bus.send(16, payload, &mut self.cs_pin);
+        let payload: u16 = ((channel as u16) << DIGIPOT_NUM_DATA_BITS) | (count as u16);
+        spi_bus.send(DIGIPOT_NUM_BITS_IN_PACKET, payload as u32, &mut self.cs_pin);
     }
     pub fn resistance_to_count(&self, mut wanted_resistance: u32) -> u8{
         wanted_resistance = enforce_bounds( DIGIPOT_WIPER_RESISTANCE, 

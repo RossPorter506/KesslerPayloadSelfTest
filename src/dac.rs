@@ -1,8 +1,6 @@
 // This file interacts with an LTC2634 Digital to Analog Converter (DAC). 
 // PCB-specific values (e.g. reference voltages, channel connections) can be found in the pcb_mapping file.
 
-use embedded_hal::digital::v2::OutputPin;
-
 use crate::pcb_mapping_v5::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_name_types::DACCSPin};
 use crate::spi::{PayloadSPI, IdleLow, SampleFirstEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
@@ -28,6 +26,20 @@ pub enum DACChannel{
 	AllChannels=0b1111,
 }
 
+// Packet format: C3 C2 C1 C0 A3 A2 A1 A0 D11 D10 D9 D8 D7 D6 D5 D4 D3 D2 D1 D0 X X X X
+//                24...                                                            ...0
+// Where C is command bits, A is address, D is data, and X is 'dont care'
+
+const NUM_COMMAND_BITS: u8 = 4;
+const NUM_ADDRESS_BITS: u8 = 4;
+const NUM_DATA_BITS: u8 = 12;
+const NUM_DONT_CARE_BITS: u8 = 4;
+const NUM_BITS_IN_PACKET: u8 = NUM_COMMAND_BITS + NUM_ADDRESS_BITS + NUM_DATA_BITS + NUM_DONT_CARE_BITS;
+
+const DATA_OFFSET: u8 = NUM_DONT_CARE_BITS;
+const ADDRESS_OFFSET: u8 = NUM_DONT_CARE_BITS + NUM_DATA_BITS;
+const COMMAND_OFFSET: u8 = NUM_ADDRESS_BITS + NUM_DONT_CARE_BITS + NUM_DATA_BITS;
+
 pub struct DAC {
     pub cs_pin: DACCSPin,
 }
@@ -39,8 +51,8 @@ impl DAC{
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
                         spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) {
-        let payload: u32 = ((command as u32) << 20) | ((channel as u32) << 16) | ((value as u32) << 4);
-        spi_bus.send(24, payload, &mut self.cs_pin);
+        let payload: u32 = ((command as u32) << COMMAND_OFFSET) | ((channel as u32) << ADDRESS_OFFSET) | ((value as u32) << DATA_OFFSET);
+        spi_bus.send(NUM_BITS_IN_PACKET, payload, &mut self.cs_pin);
     }
     pub fn voltage_to_count(&self, mut target_millivolts: u16) -> u16{
         if target_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {

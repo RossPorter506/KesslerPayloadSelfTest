@@ -2,26 +2,25 @@
 #![no_std]
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
 
-use digipot::Digipot;
 use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
+#[allow(unused_imports)]
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use panic_msp430 as _;
 use msp430;
 #[allow(unused_imports)]
 use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
+#[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
-mod pcb_mapping_v5; use pcb_mapping_v5::{LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins};
+mod pcb_mapping_v5; use pcb_mapping_v5::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
 mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow};
-mod dac; use dac::{DAC};
+mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
-mod digipot;
-mod sensors;
+mod digipot; use digipot::Digipot;
+mod sensors; use sensors::PayloadBuilder;
 mod serial; use serial::SerialWriter;
-
-use crate::{pcb_mapping_v5::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins}, sensors::PayloadBuilder};
 mod testing;
 
 #[allow(unused_mut)]
@@ -39,8 +38,6 @@ fn main() -> ! {
         mut payload_peripheral_cs_pins, 
         debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
     
-    payload_control_pins.cathode_switch.set_low().ok();
-    payload_control_pins.tether_switch.set_low().ok();
 
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
@@ -51,6 +48,7 @@ fn main() -> ! {
         .sample_on_first_edge()
         .create();
 
+    // Collate peripherals into a single struct
     let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_bus);
 
     let mut fram = Fram::new(periph.FRCTL);
@@ -71,12 +69,15 @@ fn main() -> ! {
         .use_aclk(&aclk)
         .split(debug_serial_pins.tx, debug_serial_pins.rx);
     
+    // Wrapper struct so we can use ufmt traits like urwite! and uwriteln!
     let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-    let mut payload = PayloadBuilder::new_enabled_payload(payload_peripherals, payload_control_pins);
+    // Create an object to manage payload state
+    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
+    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
+    let mut payload = payload.into_enabled_heater();
 
-    payload.pins.heater_enable.set_low().ok();
-
+    // Turn SPI into idle high configuration 
     let mut payload_spi_bus = payload_spi_bus.into_idle_high();
     
     AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
