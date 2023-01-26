@@ -81,7 +81,7 @@ impl PayloadController<PayloadOn, HeaterOff>{
                             pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
     }
     pub fn into_disabled_payload(mut self) -> PayloadController<PayloadOff, HeaterOff> {
-        self.pins.payload_enable.set_high().ok();
+        self.pins.payload_enable.set_low().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
     }

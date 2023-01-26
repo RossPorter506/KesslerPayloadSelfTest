@@ -58,7 +58,7 @@ fn main() -> ! {
         .smclk_off()
         .freeze(&mut fram);
     
-    let (serial_tx_pin, serial_rx_pin) = SerialConfig::new(  
+    let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
         periph.E_USCI_A1,
         BitOrder::LsbFirst,
         BitCount::EightBits,

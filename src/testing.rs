@@ -40,6 +40,8 @@ impl AutomatedFunctionalTests{
         for lms_channel in Self::lms_functional_test(payload, lms_pins, spi_bus).iter(){
             uwriteln!(serial, "{}", lms_channel).ok();
         }
+
+        uwriteln!(serial, "==== Functional Tests Complete ====").ok();
     }
     // Internal function to reduce code duplication
     fn test_adc_functional<CsPin: ADCCSPin, SENSOR:ADCSensor>(  
@@ -157,7 +159,8 @@ impl AutomatedFunctionalTests{
             spi_bus // return bus
         });
 
-        SensorResult{name: "Heater", result: (min_voltage_mv < 50 && max_voltage_mv > 10_000) }
+        SensorResult{name: "Heater", result: ((min_voltage_mv as u32) < (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10) 
+                                          && ((max_voltage_mv as u32) > (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10) }
     }
     // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
@@ -263,6 +266,8 @@ impl AutomatedPerformanceTests{
         }
 
         uwriteln!(serial, "{}", Self::test_pinpuller_current_sensor(payload, pinpuller_pins, spi_bus)).ok();
+
+        uwriteln!(serial, "==== Performance Tests Complete ====\n").ok();
     }
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between exterior and cathode-
@@ -298,6 +303,14 @@ impl AutomatedPerformanceTests{
             voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(cathode_offset_voltage_mv, expected_voltage_mv),i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(cathode_offset_current_ua, expected_current_ua),i as u16);
         }
+
+        // Set back to zero
+        replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+            let mut spi_bus_ = spi_bus_.into_idle_low();
+            payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, &mut spi_bus_);
+            spi_bus_.into_idle_high()
+        });
+
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
         let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
@@ -338,6 +351,14 @@ impl AutomatedPerformanceTests{
             voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(tether_bias_voltage_mv, expected_voltage_mv),i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(tether_bias_current_ua, expected_current_ma),i as u16);
         }
+
+        //Set back to zero
+        replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
+            let mut spi_bus_ = spi_bus_.into_idle_low();
+            payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, &mut spi_bus_);
+            spi_bus_.into_idle_high()
+        });
+
         payload.set_tether_bias_switch(SwitchState::Disconnected);
 
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);

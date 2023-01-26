@@ -1,5 +1,5 @@
-use embedded_hal::serial::Write;
-use msp430fr2x5x_hal::serial::{SerialUsci, Tx};
+use embedded_hal::serial::{Write, Read};
+use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
 use ufmt::uWrite;
 use void::Void;
 
@@ -26,5 +26,24 @@ impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
             self.write_char(chr).ok();
         }
         Ok(())
+    }
+}
+
+// Block until we receive any packet over serial
+pub fn wait_for_any_packet<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> u8{
+    loop {
+        match serial_reader.read() {
+            Ok(packet) => return packet,
+            _ => (),
+        }
+    }
+}
+// Block until we receive the specified character
+pub fn wait_for_character<USCI: SerialUsci>(wanted_char: u8, serial_reader: &mut Rx<USCI>) {
+    while wait_for_any_packet(serial_reader) != wanted_char {}
+}
+pub fn wait_for_string<USCI: SerialUsci>(wanted_str: &str, serial_reader: &mut Rx<USCI>) {
+    for chr in wanted_str.as_bytes(){
+        wait_for_character(*chr, serial_reader);
     }
 }
