@@ -7,7 +7,7 @@ use replace_with::replace_with;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
-use crate::sensors::{PayloadController, PayloadOn, PayloadState, PayloadOff, HeaterState, HeaterOn, SwitchState};
+use crate::payload::{PayloadController, PayloadOn, PayloadState, PayloadOff, HeaterState, HeaterOn, SwitchState};
 use crate::serial::SerialWriter;
 #[allow(unused_imports)]
 use crate::{spi::*, adc::*, digipot::*, dac::*};

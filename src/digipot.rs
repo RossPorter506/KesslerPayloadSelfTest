@@ -11,7 +11,7 @@ const DIGIPOT_NUM_DATA_BITS: u8 = 8;
 const DIGIPOT_NUM_BITS_IN_PACKET: u8 = DIGIPOT_NUM_ADDRESS_BITS + DIGIPOT_NUM_DATA_BITS;
 
 use crate::{spi::{PayloadSPI, IdleLow, SampleFirstEdge}, pcb_mapping_v5::pin_name_types::DigipotCSPin};
-use crate::sensors::enforce_bounds;
+use crate::payload::enforce_bounds;
 
 pub enum DigipotChannel{
 	Channel1=0,

@@ -19,7 +19,7 @@ mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
-mod sensors; use sensors::PayloadBuilder;
+mod payload; use payload::PayloadBuilder;
 mod serial; use serial::SerialWriter;
 mod testing;
 
