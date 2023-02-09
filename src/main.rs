@@ -122,7 +122,7 @@ fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bu
 }
 
 // Takes raw port peripherals and returns actually useful pin collections 
-fn collect_pins(pmm: PMM,p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
+fn collect_pins(pmm: PMM, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
     PayloadSPIBitBangPins,
     PinpullerActivationPins,
     LEDPins,

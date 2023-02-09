@@ -1,5 +1,4 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
-use embedded_hal::serial::Read;
 use fixed::types::extra::U32;
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
@@ -8,7 +7,7 @@ use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
 use crate::payload::{PayloadController, PayloadOn, PayloadState, PayloadOff, HeaterState, HeaterOn, SwitchState};
-use crate::serial::SerialWriter;
+use crate::serial::{SerialWriter, wait_for_any_packet};
 #[allow(unused_imports)]
 use crate::{spi::*, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
@@ -477,38 +476,28 @@ impl AutomatedPerformanceTests{
         let mut accuracy: FixedI64<U32> = FixedI64::ZERO;
         //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
 
-        accuracy = in_place_average(accuracy, calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 0),0); 
+        accuracy = in_place_average(accuracy, 
+                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 
+                                    0),
+                                    0); 
 
         // For each pin, activate the pinpuller through that channel and measure the current
-        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; NUM_PINS] = [&mut p_pins.burn_wire_1, &mut p_pins.burn_wire_1_backup, &mut p_pins.burn_wire_2, &mut p_pins.burn_wire_2_backup];
+        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; NUM_PINS] = [&mut p_pins.burn_wire_1, 
+                                                                                &mut p_pins.burn_wire_1_backup, 
+                                                                                &mut p_pins.burn_wire_2, 
+                                                                                &mut p_pins.burn_wire_2_backup];
         for (n, pin) in pin_list.iter_mut().enumerate() {
             pin.set_high().ok();
-            accuracy = in_place_average(accuracy, calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, expected_on_current as i32), (n+1) as u16);
+            accuracy = in_place_average(accuracy, 
+                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 
+                                        expected_on_current as i32), 
+                                        (n+1) as u16);
             pin.set_low().ok();
             delay_cycles(1000);
         }
 
         calculate_performance_result("Pinpuller current sense", accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100)
     }    
-}
-
-// Block until we receive any packet over serial
-fn wait_for_any_packet<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> u8{
-    loop {
-        match serial_reader.read() {
-            Ok(chr) => return chr,
-            _ => (),
-        }
-    }
-}
-// Block until we receive the specified character
-fn wait_for_character<USCI: SerialUsci>(wanted_char: u8, serial_reader: &mut Rx<USCI>) {
-    while wait_for_any_packet(serial_reader) != wanted_char {}
-}
-fn wait_for_string<USCI: SerialUsci>(wanted_str: &str, serial_reader: &mut Rx<USCI>) {
-    for chr in wanted_str.as_bytes(){
-        wait_for_character(*chr, serial_reader);
-    }
 }
 
 // Tests that require human intervention during the test
@@ -588,7 +577,10 @@ fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, ALSODO
     for (n, temp_sensor) in TEMP_SENSORS.iter().enumerate() {
         let tempr = payload.get_temperature_kelvin(&temp_sensor.0, spi_bus);
         let accuracy = calculate_rpd(tempr as i32, room_temp_k as i32);
-        output_arr[n] = calculate_performance_result(temp_sensor.1, accuracy, FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+        output_arr[n] = calculate_performance_result(temp_sensor.1, 
+                                                     accuracy, 
+                                                     FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
+                                                     FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
     }
 
     output_arr
@@ -596,6 +588,7 @@ fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, ALSODO
 
 const ASCII_ZERO: u8 = 48;
 const ASCII_NINE: u8 = 57;
+const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 // Accuracy-based tests
 pub struct ManualPerformanceTests{}
 impl ManualPerformanceTests{
@@ -633,9 +626,9 @@ impl ManualPerformanceTests{
             let tens_chr = wait_for_any_packet(serial_reader);
             let ones_chr = wait_for_any_packet(serial_reader);
             if Self::is_ascii_number(tens_chr) && Self::is_ascii_number(ones_chr) {
-                let ones = ones_chr - 48;
-                let tens = tens_chr - 48;
-                return 10*(tens as u16) + (ones as u16) + 274;
+                let ones = ones_chr - ASCII_ZERO;
+                let tens = tens_chr - ASCII_ZERO;
+                return 10*(tens as u16) + (ones as u16) + CELCIUS_TO_KELVIN_OFFSET;
             }
             else{
                 uwriteln!(serial_writer, "Invalid temperature").ok();
@@ -661,7 +654,10 @@ impl ManualPerformanceTests{
 
         for (n, (result1, result2)) in arr1.iter().zip(arr2.iter()).enumerate(){
             let accuracy = (result1.accuracy + result2.accuracy) / 2;
-            result_arr[n] = calculate_performance_result(result1.name, accuracy, FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+            result_arr[n] = calculate_performance_result(result1.name, 
+                                                         accuracy, 
+                                                         FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
+                                                         FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
         }
         result_arr
     }

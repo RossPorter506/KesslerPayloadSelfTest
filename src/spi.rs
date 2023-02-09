@@ -7,7 +7,6 @@ use crate::delay_cycles;
 
 // Trait because we can implement by either bitbanging or using peripheral
 // Separate traits befause OBC_SPI might be expanded in the future (e.g. pin interrupts)
-// (Plus, it's hell to make the pins generic)
 pub trait OBCSPI{
     fn send(&mut self, len: u8, data: u32);
     fn receive(&mut self, len: u8) -> u32;
@@ -136,6 +135,7 @@ impl PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
             _phase: PhantomData, }
     }
 }
+// These functions may be called when polarity has not been set. Phase can have any value (set, not set, etc.)
 impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
     pub fn sck_idle_high(mut self) -> PayloadSPIBitBangConfig<IdleHigh, Phase> {
         self.sck.set_high().ok();
@@ -146,6 +146,7 @@ impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
         PayloadSPIBitBangConfig::< IdleLow, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
+// These functions may be called when phase has not been set. Polarity can have any value (set, not set, etc.)
 impl<Polarity, NoPhaseSet> PayloadSPIBitBangConfig<Polarity, NoPhaseSet>{
     pub fn sample_on_first_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleFirstEdge> {
         PayloadSPIBitBangConfig::<Polarity, SampleFirstEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
@@ -154,6 +155,7 @@ impl<Polarity, NoPhaseSet> PayloadSPIBitBangConfig<Polarity, NoPhaseSet>{
         PayloadSPIBitBangConfig::<Polarity, SampleSecondEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
     }
 }
+// These functions can only be called when both phase and polarity have been set.
 impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBangConfig<Polarity, Phase>{
     pub fn create(self) -> PayloadSPIBitBang<Polarity, Phase> {
         PayloadSPIBitBang::<Polarity, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
@@ -167,7 +169,9 @@ pub struct PayloadSPIBitBang<Polarity: SckPolarity, Phase: SckPhase>{
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
 }
+
 //Internal functions to reduce code duplication. (IdleHigh and SampleRising) == (IdleLow and SampleFalling), except the initial state of the clock is inverted. Vice versa for the other pair
+//Could combine each pair into one function, but I don't want branches inside the main bitbang loop, as bitbanging is already slow enough.
 impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
     fn receive_on_first_edge(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32 {
         let mut result: u32 = 0;
