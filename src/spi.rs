@@ -30,6 +30,11 @@ pub struct SampleFirstEdge; impl SckPhase for SampleFirstEdge{}
 pub struct SampleSecondEdge; impl SckPhase for SampleSecondEdge{}
 pub struct NoPhaseSet;
 
+pub trait SpiType{}
+pub struct BitBang; impl SpiType for BitBang {}
+pub struct Peripheral; impl SpiType for Peripheral {}
+pub struct NoTypeSet;
+
 pub struct OBCSPIBitBang{
     pub miso:   Pin<P4, Pin2, Input<Pulldown>>, 
     pub mosi:   Pin<P4, Pin3, Output>, 
@@ -109,70 +114,85 @@ impl OBCSPI for OBCSPIBitBang {
 }
 
 // Constructor for PayloadSPI
-// Ex: .new().sck_idle_low().sample_on_first_edge().create()
+// Ex: .new().sck_idle_low().sample_on_first_edge().bit_bang().create()
 // All peripherals use the 'sample on first edge' phase, but it doesn't hurt to have the second edge stuff.
-pub struct PayloadSPIBitBangConfig<Polarity,Phase>{
+pub struct PayloadSPIConfig<Polarity,Phase,Type>{
     pub miso:   PayloadMISOBitBangPin, 
     pub mosi:   PayloadMOSIBitBangPin, 
     pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
+    _type:     PhantomData<Type>,
 }
-impl PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
+impl PayloadSPIConfig<NoPolaritySet, NoPhaseSet, NoTypeSet>{
     pub fn new_from_pins( miso: PayloadMISOBitBangPin, 
-                mosi: PayloadMOSIBitBangPin, 
-                sck: PayloadSCKBitBangPin) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
-        PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   miso, mosi, sck,
-                                                                _polarity: PhantomData,
-                                                                _phase: PhantomData, }
+        mosi: PayloadMOSIBitBangPin, 
+        sck: PayloadSCKBitBangPin) -> PayloadSPIConfig<NoPolaritySet, NoPhaseSet, NoTypeSet>{
+        
+        PayloadSPIConfig::<NoPolaritySet, NoPhaseSet, NoTypeSet>{   miso, mosi, sck,
+            _polarity: PhantomData,
+            _phase: PhantomData, 
+            _type: PhantomData}
     }
-    pub fn new_from_struct( pins: PayloadSPIBitBangPins) -> PayloadSPIBitBangConfig<NoPolaritySet, NoPhaseSet>{
-        PayloadSPIBitBangConfig::<NoPolaritySet, NoPhaseSet>{   
+    pub fn new_from_struct( pins: PayloadSPIBitBangPins) -> PayloadSPIConfig<NoPolaritySet, NoPhaseSet, NoTypeSet>{
+        PayloadSPIConfig::<NoPolaritySet, NoPhaseSet, NoTypeSet>{   
             miso: pins.miso, 
             mosi: pins.mosi, 
             sck: pins.sck,
             _polarity: PhantomData,
-            _phase: PhantomData, }
-    }
-}
-// These functions may be called when polarity has not been set. Phase can have any value (set, not set, etc.)
-impl<NoPolaritySet, Phase> PayloadSPIBitBangConfig<NoPolaritySet, Phase>{
-    pub fn sck_idle_high(mut self) -> PayloadSPIBitBangConfig<IdleHigh, Phase> {
-        self.sck.set_high().ok();
-        PayloadSPIBitBangConfig::<IdleHigh, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
-    }
-    pub fn sck_idle_low(mut self) -> PayloadSPIBitBangConfig<IdleLow, Phase> {
-        self.sck.set_low().ok();
-        PayloadSPIBitBangConfig::< IdleLow, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
-    }
-}
-// These functions may be called when phase has not been set. Polarity can have any value (set, not set, etc.)
-impl<Polarity, NoPhaseSet> PayloadSPIBitBangConfig<Polarity, NoPhaseSet>{
-    pub fn sample_on_first_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleFirstEdge> {
-        PayloadSPIBitBangConfig::<Polarity, SampleFirstEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
-    }
-    pub fn sample_on_second_edge(self) -> PayloadSPIBitBangConfig<Polarity, SampleSecondEdge> {
-        PayloadSPIBitBangConfig::<Polarity, SampleSecondEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
-    }
-}
-// These functions can only be called when both phase and polarity have been set.
-impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBangConfig<Polarity, Phase>{
-    pub fn create(self) -> PayloadSPIBitBang<Polarity, Phase> {
-        PayloadSPIBitBang::<Polarity, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+            _phase: PhantomData,
+            _type: PhantomData }
     }
 }
 
-pub struct PayloadSPIBitBang<Polarity: SckPolarity, Phase: SckPhase>{
+// These functions may be called when polarity has not been set. Others can have any value (set, not set, etc.)
+impl<NoPolaritySet, Phase, Type> PayloadSPIConfig<NoPolaritySet, Phase, Type>{
+    pub fn sck_idle_high(mut self) -> PayloadSPIConfig<IdleHigh, Phase, Type> {
+        self.sck.set_high().ok();
+        PayloadSPIConfig::<IdleHigh, Phase, Type>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+    pub fn sck_idle_low(mut self) -> PayloadSPIConfig<IdleLow, Phase, Type> {
+        self.sck.set_low().ok();
+        PayloadSPIConfig::< IdleLow, Phase, Type>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+}
+// These functions may be called when phase has not been set. Others can have any value (set, not set, etc.)
+impl<Polarity, NoPhaseSet, Type> PayloadSPIConfig<Polarity, NoPhaseSet, Type>{
+    pub fn sample_on_first_edge(self) -> PayloadSPIConfig<Polarity, SampleFirstEdge, Type> {
+        PayloadSPIConfig::<Polarity, SampleFirstEdge, Type>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+    pub fn sample_on_second_edge(self) -> PayloadSPIConfig<Polarity, SampleSecondEdge, Type> {
+        PayloadSPIConfig::<Polarity, SampleSecondEdge, Type>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+}
+// These functions may be called when type has not been set. Others can have any value (set, not set, etc.)
+impl<Polarity, Phase, NoTypeSet> PayloadSPIConfig<Polarity, Phase, NoTypeSet>{
+    pub fn bitbang(self) -> PayloadSPIConfig<Polarity, Phase, BitBang> {
+        PayloadSPIConfig::<Polarity, Phase, BitBang>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+    pub fn peripheral(self) -> PayloadSPIConfig<Polarity, Phase, Peripheral> {
+        PayloadSPIConfig::<Polarity, Phase, Peripheral>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+}
+// These functions can only be called when all have been set.
+impl<Polarity: SckPolarity, Phase: SckPhase, Type: SpiType> PayloadSPIConfig<Polarity, Phase, Type>{
+    pub fn create(self) -> PayloadSPIBus<Polarity, Phase, Type> {
+        PayloadSPIBus::<Polarity, Phase, Type>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
+    }
+}
+
+pub struct PayloadSPIBus<Polarity: SckPolarity, Phase: SckPhase, Type: SpiType>{
     pub miso:   PayloadMISOBitBangPin, 
     pub mosi:   PayloadMOSIBitBangPin, 
     pub sck:    PayloadSCKBitBangPin, 
     _polarity:  PhantomData<Polarity>,
     _phase:     PhantomData<Phase>,
+    _type:     PhantomData<Type>,
 }
 
 //Internal functions to reduce code duplication. (IdleHigh and SampleRising) == (IdleLow and SampleFalling), except the initial state of the clock is inverted. Vice versa for the other pair
 //Could combine each pair into one function, but I don't want branches inside the main bitbang loop, as bitbanging is already slow enough.
-impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
+impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBus<Polarity, Phase, BitBang>{
     fn receive_on_first_edge(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32 {
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
@@ -281,50 +301,55 @@ impl<Polarity: SckPolarity, Phase: SckPhase> PayloadSPIBitBang<Polarity, Phase>{
     }
 }
 // Transformation functions
-impl<Phase: SckPhase> PayloadSPIBitBang<IdleHigh, Phase>{
-    pub fn into_idle_low(mut self) -> PayloadSPIBitBang<IdleLow, Phase> {
+impl<Phase: SckPhase> PayloadSPIBus<IdleHigh, Phase, BitBang>{
+    pub fn into_idle_low(mut self) -> PayloadSPIBus<IdleLow, Phase, BitBang> {
         self.sck.set_low().ok();
-        PayloadSPIBitBang::<IdleLow, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+        PayloadSPIBus::<IdleLow, Phase, BitBang>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
     }
 }
-impl<Phase: SckPhase> PayloadSPIBitBang<IdleLow, Phase>{
-    pub fn into_idle_high(mut self) -> PayloadSPIBitBang<IdleHigh, Phase> {
+impl<Phase: SckPhase> PayloadSPIBus<IdleLow, Phase, BitBang>{
+    pub fn into_idle_high(mut self) -> PayloadSPIBus<IdleHigh, Phase, BitBang> {
         self.sck.set_high().ok();
-        PayloadSPIBitBang::<IdleHigh, Phase>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+        PayloadSPIBus::<IdleHigh, Phase, BitBang>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
     }
 }
-impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleSecondEdge>{
-    pub fn into_sample_first_edge(self) -> PayloadSPIBitBang<Polarity, SampleFirstEdge> {
-        PayloadSPIBitBang::<Polarity, SampleFirstEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+impl<Polarity: SckPolarity> PayloadSPIBus<Polarity, SampleSecondEdge, BitBang>{
+    pub fn into_sample_first_edge(self) -> PayloadSPIBus<Polarity, SampleFirstEdge, BitBang> {
+        PayloadSPIBus::<Polarity, SampleFirstEdge, BitBang>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
     }
 }
-impl<Polarity: SckPolarity> PayloadSPIBitBang<Polarity, SampleFirstEdge>{
-    pub fn into_sample_second_edge(self) -> PayloadSPIBitBang<Polarity, SampleSecondEdge> {
-        PayloadSPIBitBang::<Polarity, SampleSecondEdge>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData}
+impl<Polarity: SckPolarity> PayloadSPIBus<Polarity, SampleFirstEdge, BitBang>{
+    pub fn into_sample_second_edge(self) -> PayloadSPIBus<Polarity, SampleSecondEdge, BitBang> {
+        PayloadSPIBus::<Polarity, SampleSecondEdge, BitBang>{miso: self.miso, mosi: self.mosi, sck: self.sck, _polarity: PhantomData, _phase: PhantomData, _type: PhantomData}
     }
 }
 // Actual trait implementations
-impl PayloadSPI<IdleHigh, SampleSecondEdge> for PayloadSPIBitBang<IdleHigh, SampleSecondEdge> {
+impl PayloadSPI<IdleHigh, SampleSecondEdge> for PayloadSPIBus<IdleHigh, SampleSecondEdge, BitBang> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
     fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
-impl PayloadSPI<IdleHigh, SampleFirstEdge> for PayloadSPIBitBang<IdleHigh, SampleFirstEdge> {
+impl PayloadSPI<IdleHigh, SampleFirstEdge> for PayloadSPIBus<IdleHigh, SampleFirstEdge, BitBang> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
     fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
 }
-impl PayloadSPI<IdleLow, SampleFirstEdge> for PayloadSPIBitBang<IdleLow, SampleFirstEdge> {
+impl PayloadSPI<IdleLow, SampleFirstEdge> for PayloadSPIBus<IdleLow, SampleFirstEdge, BitBang> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
     fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
 }
-impl PayloadSPI<IdleLow, SampleSecondEdge> for PayloadSPIBitBang<IdleLow, SampleSecondEdge> {
+impl PayloadSPI<IdleLow, SampleSecondEdge> for PayloadSPIBus<IdleLow, SampleSecondEdge, BitBang> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
     fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
 
+impl<Phase: SckPhase, Polarity: SckPolarity> PayloadSPI<Polarity, Phase> for PayloadSPIBus<Polarity, Phase, Peripheral> {
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { todo!() }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { todo!() }
+    fn send_and_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 {  todo!() }
+}
 
 /*
 struct OBCSPIPeripheral{

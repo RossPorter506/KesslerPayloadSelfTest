@@ -18,11 +18,11 @@ use fixed::{self, FixedI64};
 // Functional (pass/fail) tests
 pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
-    pub fn full_system_test<USCI:SerialUsci>(
+    pub fn full_system_test<USCI:SerialUsci, DONTCARE:SpiType>(
             payload: &mut PayloadController<PayloadOn, HeaterOn>, 
             pinpuller_pins: &mut PinpullerActivationPins, 
             lms_pins: &mut TetherLMSPins,
-            spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
+            spi_bus: &mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE>, 
             serial: &mut SerialWriter<USCI>){
 
         uwriteln!(serial, "==== Functional Tests Start ====").ok();
@@ -125,9 +125,9 @@ impl AutomatedFunctionalTests{
     }
 
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
-    pub fn heater_functional_test<'a>(
+    pub fn heater_functional_test<'a, DONTCARE:SpiType>(
             payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
-            spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> SensorResult<'a> {
+            spi_bus: &mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE>) -> SensorResult<'a> {
         // Because we're alternating between talking with the ADCs (which expect IdleHigh) and the digipot (which expects IdleLow), we need to temporarily move outside a borrowed value.
         // To do this we need to temporarily take ownership of the bus to change it's typestate using the 'replace with' function.
         // Alternative is to own the SPI bus rather than take a &mut, then return it alongside the result. Neither option is really that clean.
@@ -163,10 +163,10 @@ impl AutomatedFunctionalTests{
     }
     // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
-    pub fn lms_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+    pub fn lms_functional_test<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState, DONTCARE3:SpiType>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             lms_control: &'a mut TetherLMSPins, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [SensorResult<'a>;3] {
+            spi_bus: &'a mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE3>) -> [SensorResult<'a>;3] {
         let mut ambient_counts: [u16; 3] = [0; 3];
         let mut on_counts: [u16; 3] = [0; 3];
 
@@ -199,17 +199,18 @@ impl AutomatedFunctionalTests{
 // DO NOT USE OUTSIDE OF 'replace_with'! WILL panic if called!
 // Make sure your replace_with call is panic-free!!
 #[allow(unreachable_code)]
-fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFirstEdge>{
+fn default_payload_spi_bus() -> PayloadSPIBus<IdleHigh, SampleFirstEdge, BitBang>{
     unreachable!(); // This will panic.
     let periph = msp430fr2355::Peripherals::take().unwrap(); //so will this 
     let pmm = Pmm::new(periph.PMM);
     let port4 = Batch::new(periph.P4).split(&pmm);
-    PayloadSPIBitBangConfig::new_from_pins(   
+    PayloadSPIConfig::new_from_pins(   
         port4.pin7.pullup(),
         port4.pin6.to_output(),
         port4.pin5.to_output(),)
         .sck_idle_high()
         .sample_on_first_edge()
+        .bitbang()
         .create()
 }
 
@@ -250,10 +251,10 @@ fn min<T: PartialOrd>(a:T, b:T) -> T {
 // Accuracy-based tests
 pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
-    pub fn full_system_test<USCI:SerialUsci>(
+    pub fn full_system_test<USCI:SerialUsci, DONTCARE:SpiType>(
             payload: &mut PayloadController<PayloadOn, HeaterOn>, 
             pinpuller_pins: &mut PinpullerActivationPins,
-            spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
+            spi_bus: &mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE>, 
             serial: &mut SerialWriter<USCI>){
         uwriteln!(serial, "==== Performance Tests Start ====").ok();
         // Each of these three fn's takes the same arguments and both return a voltage and current result
@@ -270,9 +271,9 @@ impl AutomatedPerformanceTests{
     }
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between exterior and cathode-
-    pub fn test_cathode_offset<'a, DONTCARE:HeaterState>(
+    pub fn test_cathode_offset<'a, DONTCARE:HeaterState, DONTCARE2:SpiType>(
             payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE2>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
@@ -319,9 +320,9 @@ impl AutomatedPerformanceTests{
     // Almost identical code, feels bad man
     // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between tether and cathode-
-    pub fn test_tether_bias<'a, DONTCARE:HeaterState>(
+    pub fn test_tether_bias<'a, DONTCARE:HeaterState, DONTCARE2:SpiType>(
             payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE2>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
@@ -420,9 +421,9 @@ impl AutomatedPerformanceTests{
     
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
-    pub fn test_heater<'a>(
+    pub fn test_heater<'a, DONTCARE:SpiType>(
             payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         let heater_resistance = FixedI64::<U32>::from(10) + FixedI64::<U32>::from(1) / 100; // heater resistance + shunt resistor
         let heater_max_power = FixedI64::<U32>::from(1); // TODO: Verify?
@@ -462,10 +463,10 @@ impl AutomatedPerformanceTests{
     
     // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     // Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
-    pub fn test_pinpuller_current_sensor<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState>(
+    pub fn test_pinpuller_current_sensor<'a, DONTCARE1: PayloadState, DONTCARE2:HeaterState, DONTCARE3:SpiType>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             p_pins: &'a mut PinpullerActivationPins, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> PerformanceResult<'a> {
+            spi_bus: &'a mut PayloadSPIBus<IdleHigh, SampleFirstEdge, DONTCARE3>) -> PerformanceResult<'a> {
         const EXPECTED_OFF_CURRENT: u16 = 0;
         let mosfet_r_on_resistance: FixedI64<U32> = FixedI64::<U32>::from(3)/100; // Verify(?)
         let pinpuller_mock_resistance: FixedI64<U32> = FixedI64::<U32>::from(2);

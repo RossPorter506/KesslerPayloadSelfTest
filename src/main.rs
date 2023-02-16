@@ -15,7 +15,7 @@ use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
 use ufmt::{uwrite, uwriteln};
 
 mod pcb_mapping_v5; use pcb_mapping_v5::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
-mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow};
+mod spi; use spi::{PayloadSPIConfig, PayloadSPI, SampleFirstEdge, IdleLow};
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
@@ -43,7 +43,8 @@ fn main() -> ! {
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
     //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
     //dac.send_command(dac::DACCommand::NoOp, DACChannel::ChannelA, 0x000, &mut payload_spi_bus); // Compile error! DAC expects a bus that idles low.
-    let mut payload_spi_bus = PayloadSPIBitBangConfig::new_from_struct(payload_spi_pins)
+    let mut payload_spi_bus = PayloadSPIConfig::new_from_struct(payload_spi_pins)
+        .bitbang()
         .sck_idle_low()
         .sample_on_first_edge()
         .create();
