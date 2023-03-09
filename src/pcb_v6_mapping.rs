@@ -52,8 +52,8 @@ pub use crate::pcb_common::*;
 
 pub mod power_supply_limits {
     // Maximum and minimum values producable by controllable power supplies
-    pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 12000;
-    pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 1400;
+    pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 1890;
+    pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 810;
 
     pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
     pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
@@ -73,14 +73,14 @@ pub mod peripheral_vcc_values {
 pub mod sensor_locations {
     use crate::{adc::*};
     // Tether ADC
-    pub const REPELLER_VOLTAGE_SENSOR:       TetherSensor = TetherSensor{channel: ADCChannel::IN0};
-    pub const HEATER_VOLTAGE_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN1};
+    pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN0};
+    pub const TETHER_BIAS_CURRENT_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN1};
     /**********                             Nothing on channel 2                        **********/
-    pub const HEATER_CURRENT_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN3};
-    pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN4};
-    pub const TETHER_BIAS_CURRENT_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN5};
-    pub const TETHER_BIAS_VOLTAGE_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN6};
-    pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN7};
+    pub const TETHER_BIAS_VOLTAGE_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN3};
+    pub const CATHODE_OFFSET_VOLTAGE_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN4};
+    pub const REPELLER_VOLTAGE_SENSOR:       TetherSensor = TetherSensor{channel: ADCChannel::IN5};
+    pub const HEATER_VOLTAGE_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN6};
+    pub const HEATER_CURRENT_SENSOR:         TetherSensor = TetherSensor{channel: ADCChannel::IN7};
 
     //Temperature ADC
     pub const LMS_EMITTER_TEMPERATURE_SENSOR:       TemperatureSensor = TemperatureSensor{channel: ADCChannel::IN0, vcc: VccType::LMS};
@@ -163,7 +163,8 @@ pub mod power_supply_equations {
     use fixed::{types::extra::U31, FixedI64};
 
     pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
-        (FixedI64::<U31>::from(75_000) / ((FixedI64::<U31>::from(millivolts))/810 - FixedI64::<U31>::from(1))).saturating_to_num()
+        //(FixedI64::<U31>::from(75_000) / ((FixedI64::<U31>::from(millivolts))/810 - FixedI64::<U31>::from(1))).saturating_to_num()
+        (FixedI64::<U31>::from(75_000) * (FixedI64::<U31>::from(millivolts)/810 - FixedI64::<U31>::from(1))).saturating_to_num()
     }
 
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{

@@ -10,8 +10,6 @@ use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConf
 use panic_msp430 as _;
 use msp430;
 #[allow(unused_imports)]
-use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
-#[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
 pub mod pcb_common; // pcb_mapping re-exports these values, so no need to interact with this file.
@@ -25,7 +23,10 @@ mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
 mod payload; use payload::PayloadBuilder;
 mod serial; use serial::SerialWriter;
-mod testing;
+
+#[allow(unused_imports)]
+mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests};
+
 
 #[allow(unused_mut)]
 #[entry]
@@ -38,11 +39,11 @@ fn main() -> ! {
         mut led_pins, 
         mut payload_control_pins, 
         mut lms_control_pins, 
-        deploy_sense_pins, 
+        mut deploy_sense_pins, 
         mut payload_peripheral_cs_pins, 
         debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
     
-
+    lms_control_pins.lms_led_enable.set_high();
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
     //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
@@ -77,15 +78,17 @@ fn main() -> ! {
     let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
     // Create an object to manage payload state
-    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins);//.into_disabled_payload();
-    //payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
-    //let mut payload = payload.into_disabled_heater();
+    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
+    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
+    let mut payload = payload.into_enabled_heater();
 
     // Turn SPI into idle high configuration 
     let mut payload_spi_bus = payload_spi_bus.into_idle_high();
     
-    //AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
-    //AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
+    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
+    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
+    ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
+
     idle_loop(&mut led_pins);
 }
 

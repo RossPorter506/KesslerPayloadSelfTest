@@ -25,7 +25,7 @@ impl AutomatedFunctionalTests{
             spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
             serial: &mut SerialWriter<USCI>){
 
-        uwriteln!(serial, "==== Functional Tests Start ====").ok();
+        uwriteln!(serial, "==== Automated Functional Tests Start ====").ok();
         for adc_test_fn in [Self::tether_adc_functional_test, Self::temperature_adc_functional_test, Self::misc_adc_functional_test].iter(){
             uwriteln!(serial, "{}", adc_test_fn(payload, spi_bus)).ok();
         }
@@ -40,7 +40,7 @@ impl AutomatedFunctionalTests{
             uwriteln!(serial, "{}", lms_channel).ok();
         }
 
-        uwriteln!(serial, "==== Functional Tests Complete ====").ok();
+        uwriteln!(serial, "==== Automated Functional Tests Complete ====").ok();
     }
     // Internal function to reduce code duplication
     fn test_adc_functional<CsPin: ADCCSPin, SENSOR:ADCSensor>(  
@@ -213,7 +213,7 @@ fn default_payload_spi_bus() -> PayloadSPIBitBang<IdleHigh, SampleFirstEdge>{
         .create()
 }
 
-// Relative percent difference. 0 means spot-on, 1 means measured is far larger than actual, -1 means measured is far smaller than actual
+// Relative percent difference. Values near zero act similar to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual
 fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<U32> {
     if actual == 0 && measured == 0{
         return FixedI64::<U32>::from(0);
@@ -255,24 +255,25 @@ impl AutomatedPerformanceTests{
             pinpuller_pins: &mut PinpullerActivationPins,
             spi_bus: &mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
             serial: &mut SerialWriter<USCI>){
-        uwriteln!(serial, "==== Performance Tests Start ====").ok();
+        uwriteln!(serial, "==== Automatic Performance Tests Start ====").ok();
         // Each of these three fn's takes the same arguments and both return a voltage and current result
         let fn_arr = [Self::test_cathode_offset, Self::test_tether_bias, Self::test_heater];
         for sensor_fn in fn_arr.iter(){
-            for sensor_result in sensor_fn(payload, spi_bus).iter(){
+            for sensor_result in sensor_fn(payload, spi_bus, serial).iter(){
                 uwriteln!(serial, "{}", sensor_result).ok();
             }
         }
 
         uwriteln!(serial, "{}", Self::test_pinpuller_current_sensor(payload, pinpuller_pins, spi_bus)).ok();
 
-        uwriteln!(serial, "==== Performance Tests Complete ====\n").ok();
+        uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
     }
     // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between exterior and cathode-
-    pub fn test_cathode_offset<'a, DONTCARE:HeaterState>(
+    pub fn test_cathode_offset<'a, DONTCARE:HeaterState, USCI:SerialUsci>(
             payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>,
+            debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
@@ -280,7 +281,8 @@ impl AutomatedPerformanceTests{
 
         payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage_mv = ((CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS - CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
+            let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
+
 
             // Set cathode voltage
             //replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
@@ -319,9 +321,10 @@ impl AutomatedPerformanceTests{
     // Almost identical code, feels bad man
     // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
     // Setup: Place a 100k resistor between tether and cathode-
-    pub fn test_tether_bias<'a, DONTCARE:HeaterState>(
+    pub fn test_tether_bias<'a, DONTCARE:HeaterState, USCI: SerialUsci>(
             payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>,
+            debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
@@ -329,7 +332,7 @@ impl AutomatedPerformanceTests{
 
         payload.set_tether_bias_switch(SwitchState::Connected); // connect to tether
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage_mv = ((TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS - TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) * output_percentage) / 100;
+            let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
 
             // Set tether voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
@@ -420,9 +423,10 @@ impl AutomatedPerformanceTests{
     
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     // Test configuration: 10 ohm resistor across heater+ and heater-
-    pub fn test_heater<'a>(
+    pub fn test_heater<'a, USCI: SerialUsci>(
             payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
-            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>) -> [PerformanceResult<'a>; 2] {
+            spi_bus: &'a mut PayloadSPIBitBang<IdleHigh, SampleFirstEdge>, 
+            debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         let heater_resistance = FixedI64::<U32>::from(10) + FixedI64::<U32>::from(1) / 100; // heater resistance + shunt resistor
         let heater_max_power = FixedI64::<U32>::from(1); // TODO: Verify?
@@ -433,12 +437,12 @@ impl AutomatedPerformanceTests{
         let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
 
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage: u16 = ((HEATER_MAX_VOLTAGE_MILLIVOLTS - HEATER_MIN_VOLTAGE_MILLIVOLTS) * output_percentage as u16)  / 100;
+            let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
 
             // Set cathode voltage
             replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
                 let mut spi_bus_ = spi_bus_.into_idle_low();
-                payload.set_heater_voltage(output_voltage, &mut spi_bus_);
+                payload.set_heater_voltage(output_voltage_mv, &mut spi_bus_);
                 spi_bus_.into_idle_high()
             });
             delay_cycles(100_000); //settling time
@@ -448,10 +452,11 @@ impl AutomatedPerformanceTests{
             let heater_current_ma = payload.get_heater_current_milliamps(spi_bus);
 
             // Calculate expected voltage and current
-            let expected_voltage: u16 = output_voltage;
+            let expected_voltage: u16 = output_voltage_mv;
             let expected_current: i16 = power_limited_max_current_ma.min(max_on_current_ma.to_num::<u32>() * output_percentage / 100) as i16;
 
-            voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(heater_voltage_mv as i32, expected_voltage as i32), i as u16);
+            let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage as i32);
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current as i32), i as u16);
         }
 
@@ -504,27 +509,38 @@ impl AutomatedPerformanceTests{
 // Functional (pass/fail) tests
 pub struct ManualFunctionalTests{}
 impl ManualFunctionalTests{
-    // Dependencies: endmass switches
-    pub fn endmass_switches_functional_test<'a, USCI: SerialUsci>(
+    pub fn full_system_test<USCI: SerialUsci>(
             pins: &mut DeploySensePins,
-            serial_writer: &'a mut SerialWriter<USCI>, 
-            serial_reader: &'a mut Rx<USCI>) -> [SensorResult<'a>; 2] {
+            serial_writer: &mut SerialWriter<USCI>, 
+            serial_reader: &mut Rx<USCI>){
 
+        uwriteln!(serial_writer, "==== Manual Functional Tests Start ====").ok();
+
+        for result in Self::endmass_switches_functional_test(pins, serial_writer, serial_reader).iter(){
+            uwriteln!(serial_writer, "{}", result).ok();
+        }
+        
+        uwriteln!(serial_writer, "==== Manual Functional Tests Complete ====").ok();
+    }
+    // Dependencies: endmass switches
+    pub fn endmass_switches_functional_test<'a, 'b, USCI: SerialUsci>(
+            pins: &DeploySensePins,
+            serial_writer: &'a mut SerialWriter<USCI>, 
+            serial_reader: &'a mut Rx<USCI>) -> [SensorResult<'b>; 2] {
 
         uwriteln!(serial_writer, "Depress switches").ok();
-        
         wait_for_any_packet(serial_reader);
 
-        let depressed_states: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
+        let is_depressed_arr: [bool; 2] = [pins.endmass_sense_1.is_low().unwrap(), pins.endmass_sense_1.is_low().unwrap()];
 
         uwriteln!(serial_writer, "Release switches").ok();
         
         wait_for_any_packet(serial_reader);
 
-        let released_states: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
+        let is_released_arr: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_1.is_high().unwrap()];
 
-        [SensorResult {name: "Endmass switch 1", result: (depressed_states[0] != released_states[0])},
-         SensorResult {name: "Endmass switch 2", result: (depressed_states[1] != released_states[1])}]
+        [SensorResult {name: "Endmass switch 1", result: (is_depressed_arr[0] == is_depressed_arr[1] && is_depressed_arr[1] == true)},
+         SensorResult {name: "Endmass switch 2", result: (is_released_arr[0] == is_released_arr[1] && is_released_arr[1] == true)}]
     }
     /*
     // Dependencies: pinpuller
