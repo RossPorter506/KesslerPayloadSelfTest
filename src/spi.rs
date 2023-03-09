@@ -1,6 +1,6 @@
 use core::{marker::PhantomData};
 
-use crate::pcb_mapping_v5::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOSIBitBangPin, PayloadMISOBitBangPin, PayloadSCKBitBangPin}, PayloadSPIBitBangPins};
+use crate::pcb_mapping::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOSIBitBangPin, PayloadMISOBitBangPin, PayloadSCKBitBangPin}, PayloadSPIBitBangPins};
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin, InputPin};
 use msp430fr2x5x_hal::gpio::*;
 use crate::delay_cycles;

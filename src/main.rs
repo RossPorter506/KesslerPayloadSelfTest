@@ -14,7 +14,11 @@ use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests};
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
-mod pcb_mapping_v5; use pcb_mapping_v5::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
+pub mod pcb_common; // pcb_mapping re-exports these values, so no need to interact with this file.
+// This line lets every other file do 'use pcb_mapping', we only have to change the version once here.
+mod pcb_mapping { include!("pcb_v6_mapping.rs"); }
+
+use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
 mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow};
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
@@ -73,15 +77,15 @@ fn main() -> ! {
     let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
     // Create an object to manage payload state
-    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
-    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
-    let mut payload = payload.into_enabled_heater();
+    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins);//.into_disabled_payload();
+    //payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
+    //let mut payload = payload.into_disabled_heater();
 
     // Turn SPI into idle high configuration 
     let mut payload_spi_bus = payload_spi_bus.into_idle_high();
     
-    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
-    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
+    //AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
+    //AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
     idle_loop(&mut led_pins);
 }
 
@@ -102,13 +106,13 @@ fn delay_cycles(num_cycles: u32){ //approximate delay fn
 }
 
 fn snake_leds(n: &mut u8, led_pins: &mut LEDPins){
+    *n = (*n + 1) % 4;
     match n {
         1 => led_pins.green_led.toggle().ok(),
         2 => led_pins.yellow_led.toggle().ok(),
         3 => led_pins.red_led.toggle().ok(),
         _ => Some(()),
     };
-    *n = (*n + 1) % 4;
 }
 
 fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) -> PayloadPeripherals{

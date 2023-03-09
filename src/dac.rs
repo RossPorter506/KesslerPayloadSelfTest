@@ -1,7 +1,7 @@
 // This file interacts with an LTC2634 Digital to Analog Converter (DAC). 
 // PCB-specific values (e.g. reference voltages, channel connections) can be found in the pcb_mapping file.
 
-use crate::pcb_mapping_v5::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_name_types::DACCSPin};
+use crate::pcb_mapping::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_name_types::DACCSPin};
 use crate::spi::{PayloadSPI, IdleLow, SampleFirstEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 

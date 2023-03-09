@@ -11,7 +11,7 @@ use crate::serial::{SerialWriter, wait_for_any_packet};
 #[allow(unused_imports)]
 use crate::{spi::*, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
-use crate::pcb_mapping_v5::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
+use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use fixed::{self, FixedI64};
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
