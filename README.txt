@@ -12,3 +12,4 @@ Source code in vague order of abstraction level (less indented files use more in
    - digipot.rs             // Driver for AD5162 Digital potentiometer
     - spi.rs                // Driver for bitbang SPI, including SPI modes using typestates. Mostly used by adc.rs, dac.rs, digipot.rs
      - pcb_mapping_vX.rs    // Low-level definitions to keep other files abstract across multiple PCB revisions. Used by almost all other files.
+      - pcb_common.rs       // PCB-related values that are common to all PCB revisions and are unlikely to change. Re-exported by pcb_mapping files.

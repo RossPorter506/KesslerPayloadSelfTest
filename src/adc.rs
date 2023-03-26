@@ -5,7 +5,7 @@
 use embedded_hal::digital::v2::OutputPin;
 use no_std_compat::marker::PhantomData;
 
-use crate::spi::{IdleHigh, SampleFirstEdge};
+use crate::spi::{SckPolarity::IdleHigh, SckPhase::SampleFirstEdge};
 use crate::{spi::PayloadSPI};
 use crate::pcb_mapping::{peripheral_vcc_values::*, pin_name_types::*};
 
@@ -87,7 +87,7 @@ const NUM_LEADING_ZEROES: u8 = 2;
 
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
-    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> u16{
+    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> u16{
         let reading: u16;
         
         // When SPI packet begins the ADC will track and read channel 1 regardless. 
@@ -101,7 +101,7 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
             // 1 << 31 would put the one-bit-long payload in the MSB, so shift by two fewer for a three-bit payload, and two fewer again to have two zeroes out front
             let data_packet = (wanted_sensor.channel() as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES);
 
-            let result = spi_bus.send_and_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut self.cs_pin);
+            let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut self.cs_pin);
             reading = (result & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
         }
         reading
@@ -109,7 +109,7 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     pub fn count_to_voltage(&self, count: u16) -> u16{
         ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16
     }
-    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<IdleHigh, SampleFirstEdge>) -> u16{
+    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> u16{
         let count = self.read_count_from(&wanted_sensor, spi_bus);
         self.count_to_voltage(count)
     }
