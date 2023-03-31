@@ -1,5 +1,4 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
-use fixed::types::extra::U32;
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use replace_with::replace_with;
@@ -190,12 +189,12 @@ impl AutomatedFunctionalTests{
 }
 
 // Relative percent difference. Values near zero act similar to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual
-fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<U32> {
+fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<32> {
     if actual == 0 && measured == 0{
-        return FixedI64::<U32>::from(0);
+        return FixedI64::<32>::from(0);
     }
-    let actual = FixedI64::<U32>::from(actual);
-    let measured = FixedI64::<U32>::from(measured);
+    let actual = FixedI64::<32>::from(actual);
+    let measured = FixedI64::<32>::from(measured);
 
     (measured - actual) / (measured.abs() + actual.abs())
 }
@@ -207,10 +206,10 @@ fn average<T: Copy + Into<f64>>(arr: &[T]) -> f64 {
     cumulative_avg
 }
 
-fn in_place_average(acc: FixedI64<U32>, new: FixedI64<U32>, n: u16) -> FixedI64<U32>{
-    acc + ((new - acc) / FixedI64::<U32>::from(n+1))
+fn in_place_average(acc: FixedI64<32>, new: FixedI64<32>, n: u16) -> FixedI64<32>{
+    acc + ((new - acc) / FixedI64::<32>::from(n+1))
 } 
-fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<U32>, success_threshhold: FixedI64<U32>, inaccurate_threshhold: FixedI64<U32>) -> PerformanceResult<'a> {
+fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<32>, success_threshhold: FixedI64<32>, inaccurate_threshhold: FixedI64<32>) -> PerformanceResult<'a> {
 
     let performance = match rpd.abs() {
         x if x < success_threshhold    => Performance::Nominal,
@@ -252,8 +251,8 @@ impl AutomatedPerformanceTests{
             debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
-        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
         payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
@@ -297,8 +296,8 @@ impl AutomatedPerformanceTests{
 
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
-        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
-        let current_result = calculate_performance_result("Cathode offset current", current_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        let current_result = calculate_performance_result("Cathode offset current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
     // Almost identical code, feels bad man
@@ -310,8 +309,8 @@ impl AutomatedPerformanceTests{
             debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
-        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
         payload.set_tether_bias_switch(SwitchState::Connected); // connect to tether
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
@@ -340,8 +339,8 @@ impl AutomatedPerformanceTests{
 
         payload.set_tether_bias_switch(SwitchState::Disconnected);
 
-        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
-        let current_result = calculate_performance_result("Tether bias current", current_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        let current_result = calculate_performance_result("Tether bias current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
     // Generic version, couldn't get working due to overlapping borrows for function pointers
@@ -405,13 +404,13 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController, 
             debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
-        let heater_resistance = FixedI64::<U32>::from(10) + FixedI64::<U32>::from(1) / 100; // heater resistance + shunt resistor
-        let heater_max_power = FixedI64::<U32>::from(1); // TODO: Verify?
-        let max_on_current_ma = FixedI64::<U32>::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / heater_resistance; 
+        let heater_resistance = FixedI64::<32>::from(10) + FixedI64::<32>::from(1) / 100; // heater resistance + shunt resistor
+        let heater_max_power = FixedI64::<32>::from(1); // TODO: Verify?
+        let max_on_current_ma = FixedI64::<32>::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / heater_resistance; 
 
         let power_limited_max_current_ma: u32 = 316;//1000 * sqrt((heater_max_power / heater_resistance).to_num());
-        let mut voltage_accuracy: FixedI64<U32> = FixedI64::ZERO;
-        let mut current_accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
@@ -439,8 +438,8 @@ impl AutomatedPerformanceTests{
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current as i32), i as u16);
         }
 
-        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
-        let current_result = calculate_performance_result("Heater current", current_accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100);
+        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        let current_result = calculate_performance_result("Heater current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
     
@@ -451,13 +450,13 @@ impl AutomatedPerformanceTests{
             p_pins: &'a mut PinpullerActivationPins, 
             spi_bus: &'a mut PayloadSPIController) -> PerformanceResult<'a> {
         const EXPECTED_OFF_CURRENT: u16 = 0;
-        let mosfet_r_on_resistance: FixedI64<U32> = FixedI64::<U32>::from(3)/100; // Verify(?)
-        let pinpuller_mock_resistance: FixedI64<U32> = FixedI64::<U32>::from(2);
-        let sense_resistance: FixedI64<U32> = FixedI64::<U32>::from(4)/10;
+        let mosfet_r_on_resistance: FixedI64<32> = FixedI64::<32>::from(3)/100; // Verify(?)
+        let pinpuller_mock_resistance: FixedI64<32> = FixedI64::<32>::from(2);
+        let sense_resistance: FixedI64<32> = FixedI64::<32>::from(4)/10;
         const NUM_PINS: usize = 4;
-        let expected_on_current: u16 = (FixedI64::<U32>::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
+        let expected_on_current: u16 = (FixedI64::<32>::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
         
-        let mut accuracy: FixedI64<U32> = FixedI64::ZERO;
+        let mut accuracy: FixedI64<32> = FixedI64::ZERO;
         //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
 
         accuracy = in_place_average(accuracy, 
@@ -480,7 +479,7 @@ impl AutomatedPerformanceTests{
             delay_cycles(1000);
         }
 
-        calculate_performance_result("Pinpuller current sense", accuracy, FixedI64::<U32>::from(5)/100, FixedI64::<U32>::from(20)/100)
+        calculate_performance_result("Pinpuller current sense", accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100)
     }    
 }
 
@@ -574,8 +573,8 @@ fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, ALSODO
         let accuracy = calculate_rpd(tempr as i32, room_temp_k as i32);
         output_arr[n] = calculate_performance_result(temp_sensor.1, 
                                                      accuracy, 
-                                                     FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
-                                                     FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+                                                     FixedI64::<32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
+                                                     FixedI64::<32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
     }
 
     output_arr
@@ -651,8 +650,8 @@ impl ManualPerformanceTests{
             let accuracy = (result1.accuracy + result2.accuracy) / 2;
             result_arr[n] = calculate_performance_result(result1.name, 
                                                          accuracy, 
-                                                         FixedI64::<U32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
-                                                         FixedI64::<U32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
+                                                         FixedI64::<32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
+                                                         FixedI64::<32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
         }
         result_arr
     }
@@ -709,11 +708,11 @@ impl ufmt::uDisplay for SensorResult<'_> {
 pub struct PerformanceResult<'a>{
     name: &'a str, 
     performance: Performance,
-    accuracy: FixedI64<U32>, // relative percent difference / 2
+    accuracy: FixedI64<32>, // relative percent difference / 2
 }
 impl PerformanceResult<'_>{
     fn default<'a>()-> PerformanceResult<'a> {
-        PerformanceResult{name: "", performance: Performance::NotWorking, accuracy: FixedI64::<U32>::from(0)}
+        PerformanceResult{name: "", performance: Performance::NotWorking, accuracy: FixedI64::<32>::from(0)}
     }
 }
 #[derive(Copy, Clone)]

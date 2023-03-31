@@ -247,25 +247,15 @@ impl<const CURRENT_POL: SckPolarity, const CURRENT_PHA: SckPhase> PayloadSPIBitB
     }
 }
 // Actual trait implementations
-impl PayloadSPI<{IdleHigh}, {SampleSecondEdge}> for PayloadSPIBitBang<{IdleHigh}, {SampleSecondEdge}> {
+impl<const POLARITY: SckPolarity> PayloadSPI<POLARITY, {SampleSecondEdge}> for PayloadSPIBitBang<{IdleHigh}, {SampleSecondEdge}> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
     fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
-impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}> for PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}> {
+impl<const POLARITY: SckPolarity> PayloadSPI<POLARITY, {SampleFirstEdge}> for PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}> {
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
     fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
-}
-impl PayloadSPI<{IdleLow}, {SampleFirstEdge}> for PayloadSPIBitBang<{IdleLow}, {SampleFirstEdge}> {
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_second_edge(len, data, cs_pin) }
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_first_edge(len, cs_pin) }
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_second_receive_on_first(len, data, cs_pin) }
-}
-impl PayloadSPI<{IdleLow}, {SampleSecondEdge}> for PayloadSPIBitBang<{IdleLow}, {SampleSecondEdge}> {
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_on_first_edge(len, data, cs_pin) }
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_on_second_edge(len, cs_pin) }
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_on_first_receive_on_second(len, data, cs_pin) }
 }
 
 // A wrapper class that automates changing the state of the bus. Useful for intermediate functions that don't use the bus themselves, but call functions that do.
