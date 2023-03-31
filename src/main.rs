@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 #![allow(dead_code, unused_variables)] // TODO: Remove when ready
+#![feature(adt_const_params)]
 
 use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
@@ -16,8 +17,8 @@ pub mod pcb_common; // pcb_mapping re-exports these values, so no need to intera
 // This line lets every other file do 'use pcb_mapping', we only have to change the version once here.
 mod pcb_mapping { include!("pcb_v6_mapping.rs"); }
 
-use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
-mod spi; use spi::{PayloadSPIBitBangConfig, PayloadSPI, SampleFirstEdge, IdleLow};
+use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS, power_supply_limits::CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS};
+mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, SckPolarity::IdleLow};
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
@@ -26,7 +27,6 @@ mod serial; use serial::SerialWriter;
 
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests};
-
 
 #[allow(unused_mut)]
 #[entry]
@@ -43,18 +43,15 @@ fn main() -> ! {
         mut payload_peripheral_cs_pins, 
         debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
     
-    lms_control_pins.lms_led_enable.set_high();
+    lms_control_pins.lms_led_enable.set_high().ok();
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     //let mut payload_spi_bus = payload_spi_bus.into_sck_idle_high();
-    //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, &mut payload_spi_bus); // Ok, the ADC wants an idle high SPI bus.
-    //dac.send_command(dac::DACCommand::NoOp, DACChannel::ChannelA, 0x000, &mut payload_spi_bus); // Compile error! DAC expects a bus that idles low.
-    let mut payload_spi_bus = PayloadSPIBitBangConfig::new_from_struct(payload_spi_pins)
-        .sck_idle_low()
-        .sample_on_first_edge()
-        .create();
+    //tether_adc.read_count_from(&REPELLER_VOLTAGE_SENSOR, payload_spi_controller.borrow()); // Ok, the ADC wants an idle high SPI bus.
+    //dac.send_command(dac::DACCommand::NoOp, DACChannel::ChannelA, 0x000, payload_spi_controller.borrow()); // Compile error! DAC expects a bus that idles low.
+    let mut payload_spi_controller = PayloadSPIController::new::<{IdleLow},{SampleFirstEdge}>(payload_spi_pins);
 
     // Collate peripherals into a single struct
-    let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_bus);
+    let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, payload_spi_controller.borrow());
 
     let mut fram = Fram::new(periph.FRCTL);
 
@@ -62,7 +59,7 @@ fn main() -> ! {
         .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
         .smclk_off()
         .freeze(&mut fram);
-    
+
     let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
         periph.E_USCI_A1,
         BitOrder::LsbFirst,
@@ -79,16 +76,14 @@ fn main() -> ! {
 
     // Create an object to manage payload state
     let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
-    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_bus);
+    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, payload_spi_controller.borrow());
     let mut payload = payload.into_enabled_heater();
-
-    // Turn SPI into idle high configuration 
-    let mut payload_spi_bus = payload_spi_bus.into_idle_high();
     
-    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_bus, &mut serial_writer);
-    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_bus, &mut serial_writer);
-    ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
+    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
+    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+    //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
 
+    let mut payload = payload.into_disabled_heater().into_disabled_payload();
     idle_loop(&mut led_pins);
 }
 
@@ -118,7 +113,7 @@ fn snake_leds(n: &mut u8, led_pins: &mut LEDPins){
     };
 }
 
-fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) -> PayloadPeripherals{
+fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>) -> PayloadPeripherals{
     // Note that the peripherals gain ownership of their associated pins
     let digipot = Digipot::new(cs_pins.digipot);
     let dac = DAC::new(cs_pins.dac, payload_spi_bus);

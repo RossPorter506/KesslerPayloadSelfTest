@@ -2,10 +2,10 @@
 // PCB-specific values (e.g. reference voltages, channel connections) can be found in the pcb_mapping file.
 
 use crate::pcb_mapping::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_name_types::DACCSPin};
-use crate::spi::{PayloadSPI, IdleLow, SampleFirstEdge};
+use crate::spi::{PayloadSPI, SckPolarity::IdleLow, SckPhase::SampleFirstEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 
-const DAC_RESOLUTION: u16 = 4095;
+const DAC_RESOLUTION: u16 = 1024;
 pub enum DACCommand{
     WriteToRegisterX=0b000,
 	UpdateRegisterX=0b0001,
@@ -37,20 +37,20 @@ const NUM_DONT_CARE_BITS: u8 = 4;
 const NUM_BITS_IN_PACKET: u8 = NUM_COMMAND_BITS + NUM_ADDRESS_BITS + NUM_DATA_BITS + NUM_DONT_CARE_BITS;
 
 const DATA_OFFSET: u8 = NUM_DONT_CARE_BITS;
-const ADDRESS_OFFSET: u8 = NUM_DONT_CARE_BITS + NUM_DATA_BITS;
-const COMMAND_OFFSET: u8 = NUM_ADDRESS_BITS + NUM_DONT_CARE_BITS + NUM_DATA_BITS;
+const ADDRESS_OFFSET: u8 = DATA_OFFSET + NUM_DATA_BITS;
+const COMMAND_OFFSET: u8 = ADDRESS_OFFSET + NUM_ADDRESS_BITS;
 
 pub struct DAC {
     pub cs_pin: DACCSPin,
 }
 impl DAC{
-    pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) -> DAC {
+    pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>) -> DAC {
         let mut dac = DAC{cs_pin};
         dac.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
         dac
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
-                        spi_bus: &mut impl PayloadSPI<IdleLow, SampleFirstEdge>) {
+                        spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>) {
         let payload: u32 = ((command as u32) << COMMAND_OFFSET) | ((channel as u32) << ADDRESS_OFFSET) | ((value as u32) << DATA_OFFSET);
         spi_bus.send(NUM_BITS_IN_PACKET, payload, &mut self.cs_pin);
     }

@@ -124,7 +124,11 @@ pub mod sensor_equations {
         (v_adc_millivolts as i32 * 106)+805
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
-        ((v_adc_millivolts as i32 * -86_463)/1000)+301_437
+        //((v_adc_millivolts as i32 * -86_463)/1000)+301_437
+        //Vadc = -Vcath/85.75+4.64643
+        //Vcath = ((10000*Vadc - 46464)*-857500) / 10000
+        //(-84826*(v_adc_millivolts as i32 + 407166)) / 1000
+        (v_adc_millivolts as i32)*-84 + 407166
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
         (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
@@ -171,7 +175,8 @@ pub mod power_supply_equations {
         (millivolts / 51) as u16
     }
     pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-        ((millivolts * 100) / 5138) as u16
+        (millivolts / 51) as u16
+        //((millivolts * 100) / 5138) as u16
     }
 }
 
