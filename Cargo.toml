@@ -23,7 +23,7 @@ msp430 = { version = "0.4.0", features = ["critical-section-single-core"] }
 no-std-compat="0.4.1"
 #libm="0.2.6"
 ufmt ="0.2.0"
-fixed="1.20.0"
+fixed="2.0.0-alpha.11"
 #fixed-sqrt="0.2.5"
 #[dependencies.num]
 #version = "0.4"

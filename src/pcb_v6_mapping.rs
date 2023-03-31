@@ -112,7 +112,7 @@ pub mod power_supply_locations {
 /* Sensor equations. Takes in the voltage reported at the ADC (in millivolts) and produces the voltage/current being sensed in millivolts/milliamps */
 
 pub mod sensor_equations {
-    use fixed::{FixedI64, types::extra::U32};
+    use fixed::FixedI64;
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
         ((v_adc_millivolts as i32 * 1035)/310) as u16
@@ -124,7 +124,11 @@ pub mod sensor_equations {
         (v_adc_millivolts as i32 * 106)+805
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
-        ((v_adc_millivolts as i32 * -86_463)/1000)+301_437
+        //((v_adc_millivolts as i32 * -86_463)/1000)+301_437
+        //Vadc = -Vcath/85.75+4.64643
+        //Vcath = ((10000*Vadc - 46464)*-857500) / 10000
+        //(-84826*(v_adc_millivolts as i32 + 407166)) / 1000
+        (v_adc_millivolts as i32)*-84 + 407166
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
         (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
@@ -153,25 +157,26 @@ pub mod sensor_equations {
         generic_temperature_eq(v_adc_millivolts, 3300)
     }
     fn generic_temperature_eq(v_adc_millivolts: u16, vcc: u16) -> u16 {
-        let ln_millivolts_approx = FixedI64::<U32>::from(FixedI64::<U32>::from(v_adc_millivolts).int_log10()) / FixedI64::LOG10_E;
+        let ln_millivolts_approx = FixedI64::<32>::from(FixedI64::<32>::from(v_adc_millivolts).int_log10()) / FixedI64::<32>::LOG10_E;
         //let ln_millivolts_approx = (u16::ilog2(v_adc_millivolts) - u16::ilog10(v_adc_millivolts)) as u16; // approximate ln using integer logs
-        (FixedI64::<U32>::from(1_028_100) / ( FixedI64::<U32>::from(705)+298*(FixedI64::<U32>::from(v_adc_millivolts))*10_000/(FixedI64::<U32>::from(vcc)-ln_millivolts_approx) )).saturating_to_num()
+        (FixedI64::<32>::from(1_028_100) / ( FixedI64::<32>::from(705)+298*(FixedI64::<32>::from(v_adc_millivolts))*10_000/(FixedI64::<32>::from(vcc)-ln_millivolts_approx) )).saturating_to_num()
     }
 }
 /* Supply control equations */
 pub mod power_supply_equations {
-    use fixed::{types::extra::U31, FixedI64};
+    use fixed::FixedI64;
 
     pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
-        //(FixedI64::<U31>::from(75_000) / ((FixedI64::<U31>::from(millivolts))/810 - FixedI64::<U31>::from(1))).saturating_to_num()
-        (FixedI64::<U31>::from(75_000) * (FixedI64::<U31>::from(millivolts)/810 - FixedI64::<U31>::from(1))).saturating_to_num()
+        //(FixedI64::<31>::from(75_000) / ((FixedI64::<31>::from(millivolts))/810 - FixedI64::<31>::from(1))).saturating_to_num()
+        (FixedI64::<31>::from(75_000) * (FixedI64::<31>::from(millivolts)/810 - FixedI64::<31>::from(1))).saturating_to_num()
     }
 
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
         (millivolts / 51) as u16
     }
     pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-        ((millivolts * 100) / 5138) as u16
+        (millivolts / 51) as u16
+        //((millivolts * 100) / 5138) as u16
     }
 }
 
