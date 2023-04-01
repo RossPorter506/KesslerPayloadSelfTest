@@ -2,3 +2,5 @@
 **/*.rs.bk
 .vim/*
 Cargo.lock
+
+src/PCBTestRust.code-workspace
