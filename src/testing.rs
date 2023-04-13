@@ -11,6 +11,7 @@ use crate::serial::{SerialWriter, wait_for_any_packet};
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
+use crate::serial::{read_num};
 use fixed::{self, FixedI64};
 // Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
 // These tests often rely on a sensor and an actuator together, so they test multiple components at once
@@ -249,13 +250,12 @@ impl AutomatedPerformanceTests{
         let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
         payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS as u32) 
                                              + output_percentage *(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
             //uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
 
             // Set cathode voltage
-            //replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
             payload.set_cathode_offset_voltage(output_voltage_mv, spi_bus.borrow());
 
             delay_cycles(10000); //settling time
@@ -307,7 +307,7 @@ impl AutomatedPerformanceTests{
         let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
         payload.set_tether_bias_switch(SwitchState::Connected); // connect to tether
-        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
 
             // Set tether voltage
@@ -574,8 +574,6 @@ fn test_temperature_sensors_against_known_temp<'a, DONTCARE:PayloadState, ALSODO
     output_arr
 }
 
-const ASCII_ZERO: u8 = 48;
-const ASCII_NINE: u8 = 57;
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 // Accuracy-based tests
 pub struct ManualPerformanceTests{}
@@ -603,25 +601,10 @@ impl ManualPerformanceTests{
         // Return success if SPI packet valid and accuracy within 10%
         todo!();
     }*/
-    fn is_ascii_number(c: u8) -> bool {
-        c >= ASCII_ZERO && c <= ASCII_NINE
-    }
     // Get room temp from user
     fn query_room_temp<USCI:SerialUsci>(serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> u16 {
-        loop {
-            uwriteln!(serial_writer, "Enter current temp (>0, two digits, in celcius)").ok();
-            
-            let tens_chr = wait_for_any_packet(serial_reader);
-            let ones_chr = wait_for_any_packet(serial_reader);
-            if Self::is_ascii_number(tens_chr) && Self::is_ascii_number(ones_chr) {
-                let ones = ones_chr - ASCII_ZERO;
-                let tens = tens_chr - ASCII_ZERO;
-                return 10*(tens as u16) + (ones as u16) + CELCIUS_TO_KELVIN_OFFSET;
-            }
-            else{
-                uwriteln!(serial_writer, "Invalid temperature").ok();
-            }
-        };
+        uwriteln!(serial_writer, "Enter current temp (in celcius)").ok();
+        return (read_num(serial_writer, serial_reader) + CELCIUS_TO_KELVIN_OFFSET as i32) as u16;
     }
     pub fn two_point_test_temperature_sensor_test<'a, USCI:SerialUsci, DONTCARE:HeaterState>( 
             payload: &'a mut PayloadController<PayloadOff, DONTCARE>, // Minimise heat generation
@@ -657,14 +640,50 @@ impl ManualPerformanceTests{
         // Return success if SPI packet valid and accuracy within 10%
         todo!();
     }
+    */
     // Dependencies: Isolated 5V supply, DAC, isolators
-    pub fn test_dac() -> PerformanceResult {
-        // Set channel X.
-        // Manually measure voltage
-        // Query user for voltage
-        // Return success if voltage within 10%
-        todo!();
+    pub fn test_dac<'a, DONTCARE:HeaterState, USCI:SerialUsci>(
+        payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
+        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 5;
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+
+        for (i, output_percentage) in (1..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u16 = ((output_percentage * DAC_VCC_VOLTAGE_MILLIVOLTS as u32) / 100) as u16;
+            let dac_count = payload.dac.voltage_to_count(output_voltage_mv as u16);
+            uwriteln!(debug_writer, "Target output voltage: {}mV. DAC count: {}", output_voltage_mv, dac_count).ok();
+
+            // Set DAC voltage
+            payload.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, 
+                DACChannel::ChannelC, 
+                dac_count, 
+                spi_bus);
+
+            delay_cycles(1000); //settling time
+            
+            // Read cathode voltage, current
+            uwrite!(debug_writer, "Measure voltage and enter in mV: ").ok();
+            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
+
+            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+        }
+
+        // Set back to zero
+        payload.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, 
+            DACChannel::ChannelA, 
+            payload.dac.voltage_to_count(0), 
+            spi_bus);
+
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        voltage_result
     }
+    /*
     // Dependencies: Isolated 5V supply, digipot, isolators
     pub fn test_digipot() -> PerformanceResult {
         // Set channel X
@@ -681,6 +700,47 @@ impl ManualPerformanceTests{
         // Return success if 
         todo!();
     }*/
+    
+    // Dependencies: DAC
+    pub fn test_cathode_offset_voltage<'a, DONTCARE:HeaterState, USCI:SerialUsci>(
+        payload: &'a mut PayloadController<PayloadOn, DONTCARE>, 
+        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
+    const NUM_MEASUREMENTS: usize = 5;
+    const TEST_RESISTANCE: u32 = 100_000;
+    let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+
+    payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
+    for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+        let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) 
+                                         + output_percentage *(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS)) / 100;
+        uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
+
+        // Set cathode voltage
+        payload.set_cathode_offset_voltage(output_voltage_mv, spi_bus);
+
+        delay_cycles(10000); //settling time
+        
+        // Read cathode voltage, current
+        uwriteln!(debug_writer, "Measure voltage and input below (in mV):").ok();
+        let actual_voltage_mv = read_num(debug_writer, serial_reader);
+
+        let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+        uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+
+        voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+    }
+
+    // Set back to zero
+    payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+
+
+    payload.set_cathode_offset_switch(SwitchState::Disconnected);
+
+    let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+    voltage_result
+    }
 }
 
 pub struct SensorResult<'a> {
