@@ -5,7 +5,6 @@ use crate::pcb_mapping::{peripheral_vcc_values::DAC_VCC_VOLTAGE_MILLIVOLTS, pin_
 use crate::spi::{PayloadSPI, SckPolarity::IdleLow, SckPhase::SampleFirstEdge};
 use crate::dac::{DACCommand::*, DACChannel::*};
 
-const DAC_RESOLUTION: u16 = 1024;
 pub enum DACCommand{
     WriteToRegisterX=0b000,
 	UpdateRegisterX=0b0001,
@@ -25,20 +24,22 @@ pub enum DACChannel{
 	ChannelD=0b0011,
 	AllChannels=0b1111,
 }
-
+// For 12-bit DAC:
 // Packet format: C3 C2 C1 C0 A3 A2 A1 A0 D11 D10 D9 D8 D7 D6 D5 D4 D3 D2 D1 D0 X X X X
 //                24...                                                            ...0
 // Where C is command bits, A is address, D is data, and X is 'dont care'
 
+const NUM_DATA_BITS: u8 = 10; // This varies depending on the exact model of LTC2634
+
+const NUM_BITS_IN_PACKET: u8 = 24;
 const NUM_COMMAND_BITS: u8 = 4;
 const NUM_ADDRESS_BITS: u8 = 4;
-const NUM_DATA_BITS: u8 = 12;
-const NUM_DONT_CARE_BITS: u8 = 4;
-const NUM_BITS_IN_PACKET: u8 = NUM_COMMAND_BITS + NUM_ADDRESS_BITS + NUM_DATA_BITS + NUM_DONT_CARE_BITS;
-
+const NUM_DONT_CARE_BITS: u8 = NUM_BITS_IN_PACKET - NUM_COMMAND_BITS - NUM_ADDRESS_BITS - NUM_DATA_BITS;
 const DATA_OFFSET: u8 = NUM_DONT_CARE_BITS;
 const ADDRESS_OFFSET: u8 = DATA_OFFSET + NUM_DATA_BITS;
 const COMMAND_OFFSET: u8 = ADDRESS_OFFSET + NUM_ADDRESS_BITS;
+
+const DAC_RESOLUTION: u16 = (1 << NUM_DATA_BITS) - 1;
 
 pub struct DAC {
     pub cs_pin: DACCSPin,
