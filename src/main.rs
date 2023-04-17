@@ -50,7 +50,7 @@ fn main() -> ! {
     delay_cycles(100_000);
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
-    let mut payload_spi_controller = PayloadSPIController::new::<{IdleLow},{SampleFirstEdge}>(payload_spi_pins);
+    let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
 
     
     // Collate peripherals into a single struct

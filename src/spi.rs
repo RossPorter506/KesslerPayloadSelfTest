@@ -10,7 +10,7 @@ pub trait OBCSPI{
     fn receive(&mut self, len: u8) -> u32;
     fn send_receive(&mut self, len: u8, data: u32) -> u32;
 }
-pub trait PayloadSPI<const POLARITY: SckPolarity, const PHASE: SckPhase> : Sized{
+pub trait PayloadSPI<const POLARITY: SckPolarity, const PHASE: SckPhase>{
     fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin);
     fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32;
     fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32;
@@ -269,9 +269,9 @@ impl PayloadSPIController {
     pub fn new_from_bus<const POLARITY: SckPolarity, const PHASE: SckPhase>(bus: PayloadSPIBitBang<POLARITY, PHASE>) -> Self {
         Self {spi_bus: bus.into()}
     }
-    pub fn new<const POLARITY: SckPolarity, const PHASE: SckPhase>(pins: PayloadSPIBitBangPins) -> Self {
-        let bus = PayloadSPIBitBang::<{IdleHigh}, {SampleFirstEdge}>::new(pins);
-        Self {spi_bus: bus.into()}
+    pub fn new(pins: PayloadSPIBitBangPins) -> Self {
+        let spi_bus = PayloadSPIBitBang::<{IdleHigh}, {SampleFirstEdge}>::new(pins);
+        Self {spi_bus}
     }
     pub fn return_bus<const POLARITY: SckPolarity, const PHASE: SckPhase>(self) -> PayloadSPIBitBang<POLARITY, PHASE> {
         self.spi_bus.into()
@@ -293,16 +293,10 @@ impl PayloadSPIController {
         };
 
         // Now we only need to trick Rust into calling the methods of PayloadSPIBitBang<POLARITY, PHASE> instead of the methods associated with our PayloadSPIBitBang<{IdleHigh}, {DeviceReadsFirstEdge}> we have stored.
-        // Get a pointer to the bus
-        let inner_ptr: *mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}> = &mut self.spi_bus;
-
         // Ask Rust to treat our PayloadSPIBitBang<{IdleHigh}, {DeviceReadsFirstEdge}> as if it were PayloadSPIBitBang<POLARITY, PHASE>.
         // This will take care of the rest of the conversion, as Rust will now call the methods associated with PayloadSPIBitBang<POLARITY, PHASE>.
         // This, combined with the above sck polarity is all that is necessary to convert between the types.
-        let inner_converted_ptr: *mut PayloadSPIBitBang<POLARITY, PHASE> = unsafe{core::mem::transmute(inner_ptr)};
-
-        //...aand return a mutable reference to our bus
-        unsafe { &mut *inner_converted_ptr }
+        return unsafe{ core::mem::transmute(&mut self.spi_bus) };
     }
 }
 /*
