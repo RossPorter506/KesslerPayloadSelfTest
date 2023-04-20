@@ -135,10 +135,10 @@ pub mod sensor_equations {
     }
     pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
         //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
-        ((v_adc_millivolts as i32 - 1020)*50_750) / 9804
+        ((1011 - v_adc_millivolts as i32)*50_750) / 10_239
     }   
     pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{ // output in MICROamps
-        ((v_adc_millivolts as i32 - 2463)*780)/500
+        ((2576 - v_adc_millivolts as i32)*883)/500
     }
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {

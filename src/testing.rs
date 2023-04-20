@@ -34,7 +34,7 @@ impl AutomatedFunctionalTests{
             uwriteln!(serial, "{}", pinpuller_lane).ok();
         }
 
-        uwriteln!(serial, "{}", Self::heater_functional_test(payload, spi_bus)).ok();
+        uwriteln!(serial, "{}", Self::heater_functional_test(payload, spi_bus, serial)).ok();
 
         for lms_channel in Self::lms_functional_test(payload, lms_pins, spi_bus).iter(){
             uwriteln!(serial, "{}", lms_channel).ok();
@@ -125,25 +125,28 @@ impl AutomatedFunctionalTests{
     }
 
     // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
-    pub fn heater_functional_test<'a>(
+    pub fn heater_functional_test<'a, USCI: SerialUsci>(
             payload: &'a mut PayloadController<PayloadOn, HeaterOn>, 
-            spi_bus: &mut PayloadSPIController) -> SensorResult<'a> {
+            spi_bus: &mut PayloadSPIController,
+            debug_writer: &mut SerialWriter<USCI>) -> SensorResult<'a> {
 
-        // Configure SPI bus for digipot and set minimum voltage
-        // Set heater to max
-        payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
-        delay_cycles(1000);
-
-        // Read voltage
-        let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
-        
         // Set heater to min
         payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
-        delay_cycles(1000);
-
+        delay_cycles(100_000);
         // Read voltage
         let min_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
+        //uwriteln!(debug_writer, "Min voltage set to {}. Read as {}, expected at most {}", HEATER_MIN_VOLTAGE_MILLIVOLTS, min_voltage_mv, (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10).ok();
+        
+        // Set heater to max
+        payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
+        delay_cycles(100_000);
+        // Read voltage
+        let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
+        //uwriteln!(debug_writer, "Max voltage set to {}. Read as {}, expected at least {}", HEATER_MAX_VOLTAGE_MILLIVOLTS, max_voltage_mv, (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10).ok();
 
+        // Set heater back to min and give time to settle
+        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
+        delay_cycles(1_000_000);
 
         SensorResult{name: "Heater", result: ((min_voltage_mv as u32) < (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10) 
                                           && ((max_voltage_mv as u32) > (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10) }
@@ -321,10 +324,10 @@ impl AutomatedPerformanceTests{
             
             // Calculate expected voltage and current
             let expected_voltage_mv: i32 = output_voltage_mv as i32;
-            let expected_current_ma: i32 = (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
+            let expected_current_ua: i32 = ((1000 * output_voltage_mv) / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
             
             voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(tether_bias_voltage_mv, expected_voltage_mv),i as u16);
-            current_accuracy = in_place_average(current_accuracy, calculate_rpd(tether_bias_current_ua, expected_current_ma),i as u16);
+            current_accuracy = in_place_average(current_accuracy, calculate_rpd(tether_bias_current_ua, expected_current_ua),i as u16);
         }
 
         //Set back to zero
@@ -723,7 +726,7 @@ impl ManualPerformanceTests{
         delay_cycles(10000); //settling time
         
         // Read cathode voltage, current
-        uwriteln!(debug_writer, "Measure voltage and input below (in mV):").ok();
+        uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
         let actual_voltage_mv = read_num(debug_writer, serial_reader);
 
         let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
