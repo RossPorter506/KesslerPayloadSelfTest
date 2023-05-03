@@ -17,15 +17,17 @@ pub fn enforce_bounds<T: Ord>(lower_bound: T, num: T, upper_bound: T) -> T{
 
 // Typestates to indicate whether the payload is powered. If the payload is not powered, trying to enable the heater (or really setting any pins connected to the payload) is potentially damaging. 
 // Hence valid states are: (PayloadOff, HeaterOff) <-> (PayloadOn, HeaterOff) <-> (PayloadOn, HeaterOn)
-pub trait PayloadState{}
-pub struct PayloadOn; impl PayloadState for PayloadOn{}
-pub struct PayloadOff; impl PayloadState for PayloadOff{}
-pub struct NoPayloadStateSet;
+#[derive(PartialEq, Eq)]
+pub enum PayloadState {
+    PayloadOn,
+    PayloadOff,
+} use PayloadState::*;
 
-pub trait HeaterState{}
-pub struct HeaterOn; impl HeaterState for HeaterOn{}
-pub struct HeaterOff; impl HeaterState for HeaterOff{}
-pub struct NoHeaterStateSet;
+#[derive(PartialEq, Eq)]
+pub enum HeaterState {
+    HeaterOn,
+    HeaterOff,
+} use HeaterState::*;
 
 pub struct PayloadBuilder {
     tether_adc: TetherADC,
@@ -36,65 +38,62 @@ pub struct PayloadBuilder {
     pins: PayloadControlPins,
 }
 impl PayloadBuilder{
-    pub fn new(periph: PayloadPeripherals, mut pins: PayloadControlPins) -> PayloadController<PayloadOff, HeaterOff> {
+    pub fn new(periph: PayloadPeripherals, mut pins: PayloadControlPins) -> PayloadController<{PayloadOff}, {HeaterOff}> {
         pins.heater_enable.set_low().ok();
         pins.payload_enable.set_low().ok();
         
-        PayloadController::<PayloadOff, HeaterOff>{
+        PayloadController::<{PayloadOff}, {HeaterOff}>{
             tether_adc: periph.tether_adc, 
             temperature_adc: periph.temperature_adc, 
             misc_adc: periph.misc_adc, 
             dac: periph.dac, 
             digipot: periph.digipot, 
-            pins: pins,
-            _heater_state: PhantomData, _payload_state: PhantomData}
+            pins: pins}
     }
 }
 
-pub struct PayloadController<PayloadState, HeaterState> {
+pub struct PayloadController<const PSTATE: PayloadState, const HSTATE: HeaterState> {
     pub tether_adc: TetherADC,
     pub temperature_adc: TemperatureADC,
     pub misc_adc: MiscADC,
     pub dac: DAC,
     pub digipot: Digipot,
     pins: PayloadControlPins,
-    _payload_state: PhantomData<PayloadState>,
-    _heater_state: PhantomData<HeaterState>
 }
-impl<PayloadState, HeaterState> PayloadController<PayloadState, HeaterState>{
+impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PSTATE, HSTATE>{
     pub fn return_peripherals(self) -> (PayloadPeripherals, PayloadControlPins){
         (PayloadPeripherals {tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot}, self.pins)
     }
 }
 // Transition functions
-impl PayloadController<PayloadOff, HeaterOff>{
-    pub fn into_enabled_payload(mut self) -> PayloadController<PayloadOn, HeaterOff> {
+impl PayloadController<{PayloadOff}, {HeaterOff}>{
+    pub fn into_enabled_payload(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
         self.pins.payload_enable.set_high().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
+                            pins: self.pins}
     }
 }
-impl PayloadController<PayloadOn, HeaterOff>{
-    pub fn into_enabled_heater(mut self) -> PayloadController<PayloadOn, HeaterOn> {
+impl PayloadController<{PayloadOn}, {HeaterOff}>{
+    pub fn into_enabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOn}> {
         self.pins.heater_enable.set_high().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
+                            pins: self.pins}
     }
-    pub fn into_disabled_payload(mut self) -> PayloadController<PayloadOff, HeaterOff> {
+    pub fn into_disabled_payload(mut self) -> PayloadController<{PayloadOff}, {HeaterOff}> {
         self.pins.payload_enable.set_low().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
+                            pins: self.pins}
     }
 }
-impl PayloadController<PayloadOn, HeaterOn>{
-    pub fn into_disabled_heater(mut self) -> PayloadController<PayloadOn, HeaterOff> {
+impl PayloadController<{PayloadOn}, {HeaterOn}>{
+    pub fn into_disabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
         self.pins.heater_enable.set_low().ok();
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, _payload_state: PhantomData, _heater_state: PhantomData }
+                            pins: self.pins}
     }
 }
 // Actual sensor functions. These are always available.
-impl<PayloadState, HeaterState> PayloadController<PayloadState, HeaterState>{
+impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PSTATE, HSTATE>{
     // Temperature sensors
     // TODO: Remove these once new temperature funciton has been tested
     /*pub fn get_lms_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,{SampleFirstEdge}>) -> u16{
@@ -142,7 +141,7 @@ impl<PayloadState, HeaterState> PayloadController<PayloadState, HeaterState>{
     }
 }
 // These functions are only available when the payload is on.
-impl<HeaterState> PayloadController<PayloadOn, HeaterState>{
+impl<const HSTATE: HeaterState> PayloadController<{PayloadOn}, HSTATE>{
     /* Supplies */
     // Heater
     // Note that we *can* change the heater voltage without the heater being enabled.
