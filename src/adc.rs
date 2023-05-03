@@ -82,8 +82,8 @@ const TRANSMIT_CYCLES: u8 = 12;
 pub const NUM_CYCLES_FOR_ONE_READING: u8 = AQUIRE_CYCLES + TRANSMIT_CYCLES;
 pub const NUM_CYCLES_FOR_TWO_READINGS: u8 = NUM_CYCLES_FOR_ONE_READING * 2;
 
-const NUM_ADDRESS_BITS: u8 = 3;
-const NUM_LEADING_ZEROES: u8 = 2;
+pub const NUM_ADDRESS_BITS: u8 = 3;
+pub const NUM_LEADING_ZEROES: u8 = 2;
 
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.

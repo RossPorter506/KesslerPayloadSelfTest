@@ -13,9 +13,9 @@ use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use crate::serial::{read_num};
 use fixed::{self, FixedI64};
-// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention
-// These tests often rely on a sensor and an actuator together, so they test multiple components at once
-// Functional (pass/fail) tests
+/// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
+/// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
+/// Functional tests are pass/fail.
 pub struct AutomatedFunctionalTests {}
 impl AutomatedFunctionalTests{
     pub fn full_system_test<USCI:SerialUsci>(
@@ -47,16 +47,17 @@ impl AutomatedFunctionalTests{
             adc: &mut ADC<CsPin, SENSOR>, 
             spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>,
             wanted_channel: ADCChannel) -> bool {
-        let data_packet = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS-1 - 2 - 2); // see adc.rs
-        let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut adc.cs_pin);
+        let payload = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES); // see adc.rs read_count_from
+        let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, payload, &mut adc.cs_pin);
         let zeroes = result & 0xF000_F000;
 
         zeroes == 0
     }
 
-    // Ask to read channel 7.
-    // Return success if SPI packet valid
-    // Dependencies: Isolated 5V supply, tether ADC, isolators
+    /// Ask to read channel 7.
+    /// Return success if SPI packet valid
+    /// 
+    /// Dependencies: Isolated 5V supply, tether ADC, isolators
     pub fn tether_adc_functional_test<'a, const DONTCARE: HeaterState>(
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
             spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
@@ -64,9 +65,10 @@ impl AutomatedFunctionalTests{
         SensorResult { name: "Tether ADC", result }
     }
 
-    // Ask to read channel 7.
-    // Return success if SPI packet valid
-    // Dependencies: temperature ADC
+    /// Ask to read channel 7.
+    /// Return success if SPI packet valid
+    /// 
+    /// Dependencies: temperature ADC
     pub fn temperature_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2: HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
@@ -74,9 +76,10 @@ impl AutomatedFunctionalTests{
         SensorResult { name: "Temperature ADC", result }
     }
 
-    // Ask to read channel 7.
-    // Return success if SPI packet valid
-    // Dependencies: misc ADC
+    /// Ask to read channel 7.
+    /// Return success if SPI packet valid
+    /// 
+    /// Dependencies: misc ADC
     pub fn misc_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
@@ -84,7 +87,9 @@ impl AutomatedFunctionalTests{
         SensorResult { name: "Misc ADC", result }
     }
 
-    // Dependencies: OBC SPI
+    /// TODO
+    /// 
+    /// Dependencies: OBC SPI
     pub fn obc_spi_functional_test() -> bool {
         // Set interrupt on cs line(?)
         // Read spi data
@@ -93,8 +98,9 @@ impl AutomatedFunctionalTests{
         todo!();
     }
 
-    // Dependencies: pinpuller, pinpuller current sensor, misc ADC
-    // Setup: Place 2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
+    /// Setup: Place 2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
+    /// 
+    /// Dependencies: pinpuller, pinpuller current sensor, misc ADC
     pub fn pinpuller_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(   
             pins: &'a mut PinpullerActivationPins, 
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>,
@@ -124,7 +130,10 @@ impl AutomatedFunctionalTests{
          SensorResult{name: "Pinpuller channel 2 backup", result: results[3]}]
     }
 
-    // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
+    /// Set the heater to the minimum, wait 0.1s and read voltage. Set to maximum, wait 0.1s, read voltage. 
+    /// Check these values are within 10% of expected values.
+    /// 
+    /// Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     pub fn heater_functional_test<'a, USCI: SerialUsci>(
             payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
             spi_bus: &mut PayloadSPIController,
@@ -151,8 +160,11 @@ impl AutomatedFunctionalTests{
         SensorResult{name: "Heater", result: ((min_voltage_mv as u32) < (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10) 
                                           && ((max_voltage_mv as u32) > (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10) }
     }
-    // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
-    // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
+    
+    /// Enable receivers, record ambient values. Enable LEDs, record values. Return ok if on_value > 2 * ambient.
+    /// 
+    /// Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
+    /// Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     pub fn lms_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             lms_control: &'a mut TetherLMSPins, 
@@ -186,7 +198,8 @@ impl AutomatedFunctionalTests{
 
 }
 
-// Relative percent difference. Values near zero act similar to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual
+/// Rather than using percent error (which isn't defined when the actual value is zero), we use Relative Percent Difference (RPD).
+/// Outputs are between -1 and 1. Values near zero are close to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual.
 fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<32> {
     if actual == 0 && measured == 0{
         return FixedI64::<32>::from(0);
@@ -196,17 +209,11 @@ fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<32> {
 
     (measured - actual) / (measured.abs() + actual.abs())
 }
-fn average<T: Copy + Into<f64>>(arr: &[T]) -> f64 {
-    let mut cumulative_avg: f64 = 0.0;
-    for (i, num) in arr.iter().enumerate() {
-        cumulative_avg += ((*num).into() - cumulative_avg) / ((i+1) as f64);
-    }
-    cumulative_avg
-}
-
+/// Iteratively updates an average with a new value
 fn in_place_average(acc: FixedI64<32>, new: FixedI64<32>, n: u16) -> FixedI64<32>{
     acc + ((new - acc) / FixedI64::<32>::from(n+1))
 } 
+
 fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<32>, success_threshhold: FixedI64<32>, inaccurate_threshhold: FixedI64<32>) -> PerformanceResult<'a> {
 
     let performance = match rpd.abs() {
@@ -216,11 +223,7 @@ fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<32>, succes
     PerformanceResult{name, performance, accuracy: rpd}
 }
 
-fn min<T: PartialOrd>(a:T, b:T) -> T {
-    if a >= b {b} else {a}
-}
-
-// Accuracy-based tests
+/// Accuracy-based tests that can be run automatically, possibly after some initial setup.
 pub struct AutomatedPerformanceTests {}
 impl AutomatedPerformanceTests{
     pub fn full_system_test<USCI:SerialUsci>(
@@ -241,8 +244,9 @@ impl AutomatedPerformanceTests{
 
         uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
     }
-    // Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
-    // Setup: Place a 100k resistor between exterior and cathode-
+    /// Setup: Place a 100k resistor between exterior and cathode-
+    /// 
+    /// Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
     pub fn test_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIController,
@@ -297,9 +301,11 @@ impl AutomatedPerformanceTests{
         let current_result = calculate_performance_result("Cathode offset current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
+
     // Almost identical code, feels bad man
-    // Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
-    // Setup: Place a 100k resistor between tether and cathode-
+    /// Setup: Place a 100k resistor between tether and cathode-
+    /// 
+    /// Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
     pub fn test_tether_bias<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIController,
@@ -394,8 +400,9 @@ impl AutomatedPerformanceTests{
         (voltage_result, current_result)
     }*/
     
-    // Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
-    // Test configuration: 10 ohm resistor across heater+ and heater-
+    /// Setup: 10 ohm resistor across heater+ and heater-
+    /// 
+    /// Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     pub fn test_heater<'a, USCI: SerialUsci>(
             payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
             spi_bus: &'a mut PayloadSPIController, 
@@ -440,8 +447,9 @@ impl AutomatedPerformanceTests{
         [voltage_result, current_result]
     }
     
-    // Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
-    // Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
+    /// Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
+    ///
+    /// Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             p_pins: &'a mut PinpullerActivationPins, 
@@ -480,8 +488,7 @@ impl AutomatedPerformanceTests{
     }    
 }
 
-// Tests that require human intervention during the test
-// Functional (pass/fail) tests
+/// Tests that require human intervention. These are pass/fail tests.
 pub struct ManualFunctionalTests{}
 impl ManualFunctionalTests{
     pub fn full_system_test<USCI: SerialUsci>(
@@ -497,7 +504,7 @@ impl ManualFunctionalTests{
         
         uwriteln!(serial_writer, "==== Manual Functional Tests Complete ====").ok();
     }
-    // Dependencies: endmass switches
+    /// Dependencies: endmass switches
     pub fn endmass_switches_functional_test<'a, 'b, USCI: SerialUsci>(
             pins: &DeploySensePins,
             serial_writer: &'a mut SerialWriter<USCI>, 
@@ -565,10 +572,10 @@ fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState,
     ];
     
     let mut output_arr: [PerformanceResult; 8] = [PerformanceResult::default(); 8];
-    for (n, temp_sensor) in TEMP_SENSORS.iter().enumerate() {
-        let tempr = payload.get_temperature_kelvin(&temp_sensor.0, spi_bus);
+    for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {
+        let tempr = payload.get_temperature_kelvin(&sensor, spi_bus);
         let accuracy = calculate_rpd(tempr as i32, room_temp_k as i32);
-        output_arr[n] = calculate_performance_result(temp_sensor.1, 
+        output_arr[n] = calculate_performance_result(name, 
                                                      accuracy, 
                                                      FixedI64::<32>::from(TEMPERATURE_SENSOR_SUCCESS)/100, 
                                                      FixedI64::<32>::from(TEMPERATURE_SENSOR_INACCURATE)/100)
@@ -604,7 +611,7 @@ impl ManualPerformanceTests{
         // Return success if SPI packet valid and accuracy within 10%
         todo!();
     }*/
-    // Get room temp from user
+    /// Get room temp from user
     fn query_room_temp<USCI:SerialUsci>(serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> u16 {
         uwriteln!(serial_writer, "Enter current temp (in celcius)").ok();
         return (read_num(serial_writer, serial_reader) + CELCIUS_TO_KELVIN_OFFSET as i32) as u16;
@@ -644,7 +651,7 @@ impl ManualPerformanceTests{
         todo!();
     }
     */
-    // Dependencies: Isolated 5V supply, DAC, isolators
+    /// Dependencies: Isolated 5V supply, DAC, isolators
     pub fn test_dac<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
         spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
@@ -704,7 +711,7 @@ impl ManualPerformanceTests{
         todo!();
     }*/
     
-    // Dependencies: DAC
+    /// Dependencies: DAC
     pub fn test_cathode_offset_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
         spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
@@ -746,10 +753,12 @@ impl ManualPerformanceTests{
     }
 }
 
+/// Functional test result.
 pub struct SensorResult<'a> {
     name: &'a str,
     result: bool,
 }
+// Define how to print a SensorResult
 impl ufmt::uDisplay for SensorResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         let result = match self.result {
@@ -761,6 +770,7 @@ impl ufmt::uDisplay for SensorResult<'_> {
     }
 }
 
+/// Accuracy test result. Includes a name, a broad performance category (e.g. good, ok, bad), and a numerical accuracy
 #[derive(Copy, Clone)]
 pub struct PerformanceResult<'a>{
     name: &'a str, 
@@ -772,12 +782,7 @@ impl PerformanceResult<'_>{
         PerformanceResult{name: "", performance: Performance::NotWorking, accuracy: FixedI64::<32>::from(0)}
     }
 }
-#[derive(Copy, Clone)]
-pub enum Performance {
-    Nominal,
-    Inaccurate,
-    NotWorking,
-}
+// Define how to print a PerformanceResult
 impl ufmt::uDisplay for PerformanceResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         let result = match self.performance {
@@ -789,4 +794,11 @@ impl ufmt::uDisplay for PerformanceResult<'_> {
         uwrite!(f, "[{}] {}, {}.{}% error", result, self.name, percent_acc, fractional_percent).ok();
         Ok(())
     }
+}
+
+#[derive(Copy, Clone)]
+pub enum Performance {
+    Nominal,
+    Inaccurate,
+    NotWorking,
 }
