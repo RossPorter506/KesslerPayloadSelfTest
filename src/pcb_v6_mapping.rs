@@ -55,17 +55,17 @@ pub mod power_supply_limits {
     pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 1890;
     pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 810;
 
-    pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
+    pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
     pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
 
-    pub const TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS: u32 = 255000;
+    pub const TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
     pub const TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
 }
 pub mod peripheral_vcc_values {
     // VCC Supply voltages
     pub const ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
-    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // Verify
-    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5000; // TODO: Verify
+    pub const ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5140; // Verify
+    pub const DAC_VCC_VOLTAGE_MILLIVOLTS: u16 = 5140; // TODO: Verify
     pub const PINPULLER_VOLTAGE_MILLIVOLTS: u16 = 3300; // TODO verify
 }
 
@@ -115,20 +115,20 @@ pub mod sensor_equations {
     use fixed::FixedI64;
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
-        ((v_adc_millivolts as i32 * 1035)/310) as u16
+        (((v_adc_millivolts as i32 * 1035)/310) - 45) as u16
     }
     pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32{
         (v_adc_millivolts as i32 - 2755)*102
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32{
-        (v_adc_millivolts as i32 * 106)+805
+        ((v_adc_millivolts as i32 * 10891) / 100)+3708
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
         //((v_adc_millivolts as i32 * -86_463)/1000)+301_437
         //Vadc = -Vcath/85.75+4.64643
         //Vcath = ((10000*Vadc - 46464)*-857500) / 10000
         //(-84826*(v_adc_millivolts as i32 + 407166)) / 1000
-        (v_adc_millivolts as i32)*-84 + 407166
+        ((v_adc_millivolts as i32)*-84714 / 1000) + 406089
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
         (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
@@ -165,18 +165,19 @@ pub mod sensor_equations {
 /* Supply control equations */
 pub mod power_supply_equations {
     use fixed::FixedI64;
+    use super::*;
 
     pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
         //(FixedI64::<31>::from(75_000) / ((FixedI64::<31>::from(millivolts))/810 - FixedI64::<31>::from(1))).saturating_to_num()
-        (FixedI64::<31>::from(75_000) * (FixedI64::<31>::from(millivolts)/810 - FixedI64::<31>::from(1))).saturating_to_num()
+        (FixedI64::<31>::from(75_000) * ((FixedI64::<31>::from(millivolts-21)) /794 - FixedI64::<31>::from(1))).saturating_to_num()
     }
 
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-        (millivolts / 51) as u16
+        ((millivolts - 1215) * 100 / 5249) as u16
     }
     pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
-        (millivolts / 51) as u16
-        //((millivolts * 100) / 5138) as u16
+        //(millivolts / 51) as u16 // ideal
+        ((millivolts * 100) / 5020) as u16
     }
 }
 

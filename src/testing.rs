@@ -317,6 +317,7 @@ impl AutomatedPerformanceTests{
     set_switch_fn(payload, SwitchState::Connected); // connect to exterior
     for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
         let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
+        uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv).ok();
 
         // Set cathode voltage
         set_voltage_fn(payload, set_voltage_mv, spi_bus.borrow());
@@ -326,16 +327,22 @@ impl AutomatedPerformanceTests{
         // Read voltage, current
         let measured_voltage_mv = measure_voltage_fn(payload, spi_bus.borrow());
         let measured_current_ua = measure_current_fn(payload, spi_bus.borrow());
+        uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv).ok();
+        uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua).ok();
 
         // Calculate expected voltage and current
         let expected_voltage_mv: i32 = set_voltage_mv as i32;
         let expected_current_ua: i32 = ((1000 * set_voltage_mv) / (TEST_RESISTANCE + SENSE_RESISTANCE)) as i32;
+
+        uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv).ok();
+        uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua).ok();
 
         let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
         let current_rpd = calculate_rpd(measured_current_ua, expected_current_ua);
 
         voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
         current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
+        uwriteln!(debug_writer, "").ok();
     }
 
     // Set back to zero
@@ -368,12 +375,12 @@ impl AutomatedPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
 
-            //uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
+            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
             
             // Read voltage, current
             let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
-            //uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
+            uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
             let heater_current_ma = payload.get_heater_current_milliamps(spi_bus.borrow());
             //uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
@@ -383,7 +390,7 @@ impl AutomatedPerformanceTests{
             //uwriteln!(debug_writer, "Expected current is: {}mA", expected_current);
 
             let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage as i32);
-            //uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
+            uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current as i32), i as u16);
         }
@@ -663,7 +670,7 @@ impl ManualPerformanceTests{
         spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
-    const NUM_MEASUREMENTS: usize = 5;
+    const NUM_MEASUREMENTS: usize = 10;
     const TEST_RESISTANCE: u32 = 100_000;
     let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
 
@@ -681,6 +688,7 @@ impl ManualPerformanceTests{
         // Read cathode voltage, current
         uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
         let actual_voltage_mv = read_num(debug_writer, serial_reader);
+        uwriteln!(debug_writer, "").ok();
 
         let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
         uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
@@ -697,6 +705,76 @@ impl ManualPerformanceTests{
     let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
     voltage_result
     }
+
+    pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+
+        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) 
+                                            + output_percentage *(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS)) / 100;
+            uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
+
+            // Set tether bias
+            payload.set_tether_bias_voltage(output_voltage_mv, spi_bus);
+
+            delay_cycles(10000); //settling time
+            
+            // Read tether bias voltage, current
+            uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
+            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
+
+            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+        }
+
+        // Set back to zero
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
+
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        voltage_result
+    }
+    pub fn test_heater_voltage<'a, USCI: SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+        spi_bus: &'a mut PayloadSPIController, 
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI>) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 10;
+
+        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+
+        for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
+
+            // Set cathode voltage
+            payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
+
+            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
+            delay_cycles(100_000); //settling time
+
+            uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
+            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
+
+            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+        }
+
+        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        voltage_result
+}
 }
 
 /// Functional test result.

@@ -58,9 +58,7 @@ fn main() -> ! {
     // Create an object to manage payload state
     let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
     
-
     let mut fram = Fram::new(periph.FRCTL);
-    
 
     let (smclk, aclk) = ClockConfig::new(periph.CS)
         .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
@@ -87,9 +85,10 @@ fn main() -> ! {
     AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
     AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
     //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
-    ManualPerformanceTests::test_cathode_offset_voltage(&mut payload, payload_spi_controller.borrow(), &mut serial_writer, &mut serial_rx_pin);
+    ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+    payload.dac.send_command(dac::DACCommand::WriteToAndUpdateRegisterX, pcb_mapping::power_supply_locations::CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL, 1023, payload_spi_controller.borrow());
 
-    let mut payload = payload.into_disabled_heater().into_disabled_payload();
+    //let mut payload = payload.into_disabled_heater().into_disabled_payload();
     idle_loop(&mut led_pins);
 }
 
