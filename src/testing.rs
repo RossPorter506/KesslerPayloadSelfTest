@@ -608,7 +608,7 @@ impl ManualPerformanceTests{
 
         for (i, output_percentage) in (1..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u16 = ((output_percentage * DAC_VCC_VOLTAGE_MILLIVOLTS as u32) / 100) as u16;
-            let dac_count = payload.dac.voltage_to_count(output_voltage_mv as u16);
+            let dac_count = DAC::voltage_to_count(output_voltage_mv as u16);
             uwriteln!(debug_writer, "Target output voltage: {}mV. DAC count: {}", output_voltage_mv, dac_count).ok();
 
             // Set DAC voltage
@@ -633,7 +633,7 @@ impl ManualPerformanceTests{
         // Set back to zero
         payload.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, 
             DACChannel::ChannelA, 
-            payload.dac.voltage_to_count(0), 
+            DAC::voltage_to_count(0), 
             spi_bus);
 
         let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);

@@ -39,7 +39,7 @@ const DATA_OFFSET: u8 = NUM_DONT_CARE_BITS;
 const ADDRESS_OFFSET: u8 = DATA_OFFSET + NUM_DATA_BITS;
 const COMMAND_OFFSET: u8 = ADDRESS_OFFSET + NUM_ADDRESS_BITS;
 
-const DAC_RESOLUTION: u16 = (1 << NUM_DATA_BITS) - 1;
+pub const DAC_RESOLUTION: u16 = (1 << NUM_DATA_BITS) - 1;
 
 pub struct DAC {
     pub cs_pin: DACCSPin,
@@ -55,7 +55,7 @@ impl DAC{
         let payload: u32 = ((command as u32) << COMMAND_OFFSET) | ((channel as u32) << ADDRESS_OFFSET) | ((value as u32) << DATA_OFFSET);
         spi_bus.send(NUM_BITS_IN_PACKET, payload, &mut self.cs_pin);
     }
-    pub fn voltage_to_count(&self, mut target_millivolts: u16) -> u16{
+    pub fn voltage_to_count(mut target_millivolts: u16) -> u16{
         if target_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {
             target_millivolts = DAC_VCC_VOLTAGE_MILLIVOLTS;
         }

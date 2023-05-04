@@ -169,7 +169,7 @@ impl<const HSTATE: HeaterState> PayloadController<{PayloadOn}, HSTATE>{
             target_millivolts,
             TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS);
         let dac_voltage = tether_bias_target_voltage_to_dac_voltage(target_millivolts);
-        let count = self.dac.voltage_to_count(dac_voltage);
+        let count = DAC::voltage_to_count(dac_voltage);
         self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, TETHER_BIAS_SUPPLY_CONTROL_CHANNEL, count, spi_bus)
     }
     pub fn get_tether_bias_voltage_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> i32 {
@@ -188,7 +188,7 @@ impl<const HSTATE: HeaterState> PayloadController<{PayloadOn}, HSTATE>{
             target_millivolts,
             CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS);
         let dac_voltage = cathode_offset_target_voltage_to_dac_voltage(target_millivolts);
-        let count = self.dac.voltage_to_count(dac_voltage);
+        let count = DAC::voltage_to_count(dac_voltage);
         self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL, count, spi_bus)
     }
     pub fn get_cathode_offset_voltage_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> i32 {
