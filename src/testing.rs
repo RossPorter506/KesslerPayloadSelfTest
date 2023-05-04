@@ -135,7 +135,7 @@ impl AutomatedFunctionalTests{
     /// 
     /// Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
     pub fn heater_functional_test<'a, USCI: SerialUsci>(
-            payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+            payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
             spi_bus: &mut PayloadSPIController,
             debug_writer: &mut SerialWriter<USCI>) -> SensorResult<'a> {
 
@@ -251,58 +251,23 @@ impl AutomatedPerformanceTests{
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIController,
             debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
-        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
-
-        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS as u32) 
-                                             + output_percentage *(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
-            //uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
-
-            // Set cathode voltage
-            payload.set_cathode_offset_voltage(output_voltage_mv, spi_bus.borrow());
-
-            delay_cycles(10000); //settling time
-            
-            // Read cathode voltage, current
-            let cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus.borrow());
-            let cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus.borrow());
-            //uwriteln!(debug_writer, "Measured output voltage: {}mV", cathode_offset_voltage_mv).ok();
-            //uwriteln!(debug_writer, "Measured output current: {}uA", cathode_offset_current_ua).ok();
-
-            // Calculate expected voltage and current
-            let expected_voltage_mv: i32 = output_voltage_mv as i32;
-            let expected_current_ua: i32 = 1000 * (output_voltage_mv / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
-
-            //uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv).ok();
-            //uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua).ok();
-
-            let voltage_rpd = calculate_rpd(cathode_offset_voltage_mv, expected_voltage_mv);
-            let current_rpd = calculate_rpd(cathode_offset_current_ua, expected_current_ua);
-
-            //uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
-            //uwriteln!(debug_writer, "Calculated current millirpd: {}", (current_rpd*1000).to_num::<i32>()).ok();
-
-            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
-            current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
-            //uwriteln!(debug_writer, "").ok();
-        }
-
-        // Set back to zero
-        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow());
-
-
-        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+        
+        let [voltage_accuracy, current_accuracy] = Self::test_hvdc_supply(
+            &|pyld, s| PayloadController::set_cathode_offset_switch(pyld, s), 
+            &|pyld, spi| PayloadController::get_cathode_offset_voltage_millivolts(pyld,spi), 
+            &|pyld, spi| PayloadController::get_cathode_offset_current_microamps(pyld,spi), 
+            &|pyld, n:u32, spi| PayloadController::set_cathode_offset_voltage(pyld,n,spi), 
+            CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, 
+            CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, 
+            payload,
+            spi_bus, 
+            debug_writer);
 
         let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         let current_result = calculate_performance_result("Cathode offset current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
 
-    // Almost identical code, feels bad man
     /// Setup: Place a 100k resistor between tether and cathode-
     /// 
     /// Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
@@ -310,95 +275,76 @@ impl AutomatedPerformanceTests{
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
             spi_bus: &'a mut PayloadSPIController,
             debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
-        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
-
-        payload.set_tether_bias_switch(SwitchState::Connected); // connect to tether
-        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100;
-
-            // Set tether voltage
-            payload.set_tether_bias_voltage(output_voltage_mv, spi_bus.borrow());
-
-            delay_cycles(100_000); //settling time
-            
-            // Read tether voltage, current
-            let tether_bias_voltage_mv = payload.get_tether_bias_voltage_millivolts(spi_bus.borrow());
-            let tether_bias_current_ua = payload.get_tether_bias_current_microamps(spi_bus.borrow());
-            
-            // Calculate expected voltage and current
-            let expected_voltage_mv: i32 = output_voltage_mv as i32;
-            let expected_current_ua: i32 = ((1000 * output_voltage_mv) / (TEST_RESISTANCE + TETHER_SENSE_RESISTANCE_OHMS)) as i32;
-            
-            voltage_accuracy = in_place_average(voltage_accuracy, calculate_rpd(tether_bias_voltage_mv, expected_voltage_mv),i as u16);
-            current_accuracy = in_place_average(current_accuracy, calculate_rpd(tether_bias_current_ua, expected_current_ua),i as u16);
-        }
-
-        //Set back to zero
-        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow());
-
-
-        payload.set_tether_bias_switch(SwitchState::Disconnected);
+        
+        let [voltage_accuracy, current_accuracy] = Self::test_hvdc_supply(
+            &|pyld, s| PayloadController::set_tether_bias_switch(pyld, s), 
+            &|pyld, spi| PayloadController::get_tether_bias_voltage_millivolts(pyld,spi), 
+            &|pyld, spi| PayloadController::get_tether_bias_current_microamps(pyld,spi), 
+            &|pyld, n:u32, spi| PayloadController::set_tether_bias_voltage(pyld,n,spi), 
+            TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, 
+            TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, 
+            payload,
+            spi_bus, 
+            debug_writer);
 
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         let current_result = calculate_performance_result("Tether bias current", current_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         [voltage_result, current_result]
     }
-    // Generic version, couldn't get working due to overlapping borrows for function pointers
-    /*fn test_generic_voltage_current(supply_max: u32, supply_min: u32, success_threshhold: f64, inaccurate_threshhold: f64,
-                                    read_voltage_fn: &dyn Fn(&mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
-                                    read_current_fn: &dyn Fn(&mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
-                                    set_voltage_fn:  &dyn Fn(u32, &mut PayloadSPIBitBang<IdleLow, {SampleFirstEdge}>),
-                                    calculate_current_fn: &dyn Fn(i32) -> i32,
-                                    spi_bus: &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> (PerformanceResult, PerformanceResult) {
-        const NUM_MEASUREMENTS: usize = 10;
-        let mut voltage_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
-        let mut current_accuracy_measurements: [f64;NUM_MEASUREMENTS] = [0.0; NUM_MEASUREMENTS];
+    
+    /// Internal function to reduce code duplication. Accepts closures as arguments.
+    /// These closures take the payload controller and a function pointer to the desired function (alongside any other inputs).
+    /// These are combined into the desired function call inside the closure.
+    //  I tried with regular function pointers, but Rust didn't enjoy the const generic subtypes.
+    fn test_hvdc_supply<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+        set_switch_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, SwitchState), 
+        measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
+        measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
+        set_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, u32, &mut PayloadSPIBitBang<{IdleLow}, {SampleFirstEdge}>),
+        supply_min: u32,
+        supply_max: u32,
+        payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
+        spi_bus: &mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>) -> [FixedI64<32>; 2] {
+    const NUM_MEASUREMENTS: usize = 10;
+    const TEST_RESISTANCE: u32 = 100_000;
+    const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
+    const TEST_START_PERCENT: u32 = 10;
+    const TEST_END_PERCENT: u32 = 100;
+    let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
+    let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
-        for (i, output_percentage) in (0..=100u8).step_by(NUM_MEASUREMENTS).enumerate() {
-            let output_fraction =  output_percentage as f32 * 0.01;
-            let output_voltage = ((supply_max - supply_min) as f32 * output_fraction) as u32;
+    set_switch_fn(payload, SwitchState::Connected); // connect to exterior
+    for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
+        let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
 
-            // Set voltage
-            replace_with(spi_bus, default_payload_spi_bus, |spi_bus_| {
-                let mut spi_bus_ = spi_bus_.into_idle_low();
-                set_voltage_fn(output_voltage, &mut spi_bus_);
-                spi_bus_.into_idle_high()
-            });
-            delay_cycles(100_000); //settling time
-            
-            // Read cathode voltage 
-            let tether_bias_voltage_mv = read_voltage_fn(spi_bus);
+        // Set cathode voltage
+        set_voltage_fn(payload, set_voltage_mv, spi_bus.borrow());
 
-            // Read cathode current (setup TBD)
-            let tether_bias_current_ua = read_current_fn(spi_bus);
+        delay_cycles(100_000); //settling time
+        
+        // Read voltage, current
+        let measured_voltage_mv = measure_voltage_fn(payload, spi_bus.borrow());
+        let measured_current_ua = measure_current_fn(payload, spi_bus.borrow());
 
-            // Calculate expected voltage and current
-            let expected_voltage: i32 = output_voltage as i32;
-            let expected_current: i32 = calculate_current_fn(output_voltage as i32);
+        // Calculate expected voltage and current
+        let expected_voltage_mv: i32 = set_voltage_mv as i32;
+        let expected_current_ua: i32 = ((1000 * set_voltage_mv) / (TEST_RESISTANCE + SENSE_RESISTANCE)) as i32;
 
-            voltage_accuracy_measurements[i] = calculate_accuracy(tether_bias_voltage_mv, expected_voltage);
-            current_accuracy_measurements[i] = calculate_accuracy(tether_bias_current_ua, expected_current as i32);
-        }
+        let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
+        let current_rpd = calculate_rpd(measured_current_ua, expected_current_ua);
 
-        let voltage_accuracy = average(&voltage_accuracy_measurements);
-        let current_accuracy = average(&current_accuracy_measurements);
+        voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+        current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
+    }
 
-        let voltage_result = match voltage_accuracy {
-            x if x > success_threshhold     => PerformanceResult::Success(voltage_accuracy),
-            x if x > inaccurate_threshhold => PerformanceResult::Inaccurate(voltage_accuracy),
-            _                                   => PerformanceResult::NotWorking(voltage_accuracy),
-        };
-        let current_result = match current_accuracy {
-            x if x > success_threshhold    => PerformanceResult::Success(current_accuracy),
-            x if x > inaccurate_threshhold => PerformanceResult::Inaccurate(current_accuracy),
-            _                                   => PerformanceResult::NotWorking(current_accuracy),
-        };
+    // Set back to zero
+    set_voltage_fn(payload, supply_min, spi_bus.borrow());
 
-        (voltage_result, current_result)
-    }*/
+    set_switch_fn(payload, SwitchState::Disconnected);
+
+    [voltage_accuracy, current_accuracy]
+}
     
     /// Setup: 10 ohm resistor across heater+ and heater-
     /// 
