@@ -12,6 +12,22 @@ use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use crate::serial::{read_num};
 use fixed::{self, FixedI64};
+
+//Macros to only print if debug_print feature is enabled
+macro_rules! dbg_uwriteln {
+    ($first:tt $(, $( $rest:tt )* )?) => {    
+        #[cfg(feature = "debug")]
+        {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
+    }
+}
+#[allow(unused_macros)]
+macro_rules! dbg_uwrite {
+    ($first:tt $(, $( $rest:tt )* )?) => {    
+        #[cfg(feature = "debug")]
+        {uwrite!($first, "[....] ").ok(); uwrite!($first, $( $($rest)* )*).ok();}
+    }
+}
+
 /// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
 /// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
 /// Functional tests are pass/fail.
@@ -143,14 +159,14 @@ impl AutomatedFunctionalTests{
         delay_cycles(100_000);
         // Read voltage
         let min_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
-        //uwriteln!(debug_writer, "Min voltage set to {}. Read as {}, expected at most {}", HEATER_MIN_VOLTAGE_MILLIVOLTS, min_voltage_mv, (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10).ok();
+        dbg_uwriteln!(debug_writer, "Min voltage set to {}. Read as {}, expected at most {}", HEATER_MIN_VOLTAGE_MILLIVOLTS, min_voltage_mv, (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10);
         
         // Set heater to max
         payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
         delay_cycles(100_000);
         // Read voltage
         let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
-        //uwriteln!(debug_writer, "Max voltage set to {}. Read as {}, expected at least {}", HEATER_MAX_VOLTAGE_MILLIVOLTS, max_voltage_mv, (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10).ok();
+        dbg_uwriteln!(debug_writer, "Max voltage set to {}. Read as {}, expected at least {}", HEATER_MAX_VOLTAGE_MILLIVOLTS, max_voltage_mv, (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10);
 
         // Set heater back to min and give time to settle
         payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
@@ -316,7 +332,7 @@ impl AutomatedPerformanceTests{
     set_switch_fn(payload, SwitchState::Connected); // connect to exterior
     for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
         let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
-        uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv).ok();
+        dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);
 
         // Set cathode voltage
         set_voltage_fn(payload, set_voltage_mv, spi_bus.borrow());
@@ -326,22 +342,22 @@ impl AutomatedPerformanceTests{
         // Read voltage, current
         let measured_voltage_mv = measure_voltage_fn(payload, spi_bus.borrow());
         let measured_current_ua = measure_current_fn(payload, spi_bus.borrow());
-        uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv).ok();
-        uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua).ok();
+        dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
+        dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
 
         // Calculate expected voltage and current
         let expected_voltage_mv: i32 = set_voltage_mv as i32;
         let expected_current_ua: i32 = ((1000 * set_voltage_mv) / (TEST_RESISTANCE + SENSE_RESISTANCE)) as i32;
 
-        uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv).ok();
-        uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua).ok();
+        dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
+        dbg_uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua);
 
         let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
         let current_rpd = calculate_rpd(measured_current_ua, expected_current_ua);
 
         voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
         current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
-        uwriteln!(debug_writer, "").ok();
+        dbg_uwriteln!(debug_writer, "");
     }
 
     // Set back to zero
@@ -374,24 +390,25 @@ impl AutomatedPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
 
-            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
+            dbg_uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
             
             // Read voltage, current
             let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
-            uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
+            dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
             let heater_current_ma = payload.get_heater_current_milliamps(spi_bus.borrow());
-            //uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
+            dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
             // Calculate expected voltage and current
             let expected_voltage: u16 = output_voltage_mv;
             let expected_current: i16 = power_limited_max_current_ma.min(max_on_current_ma.to_num::<u32>() * output_percentage / 100) as i16;
-            //uwriteln!(debug_writer, "Expected current is: {}mA", expected_current);
+            dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current);
 
             let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage as i32);
-            uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
+            dbg_uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current as i32), i as u16);
+            dbg_uwriteln!(debug_writer, "");
         }
 
         let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
