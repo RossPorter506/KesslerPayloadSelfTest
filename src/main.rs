@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
 #![allow(dead_code, unused_variables, unused_imports)] // TODO: Remove when ready
+
+#![allow(incomplete_features)]
 #![feature(adt_const_params)]
 
 use embedded_hal::{digital::v2::*};
@@ -48,11 +50,11 @@ fn main() -> ! {
     payload_peripheral_cs_pins.dac.set_high().ok();
     payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
     delay_cycles(100_000);
+    
     // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
     // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
     let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
 
-    
     // Collate peripherals into a single struct
     let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
     // Create an object to manage payload state
@@ -64,7 +66,9 @@ fn main() -> ! {
         .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
         .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
         .freeze(&mut fram);
+
     led_pins.yellow_led.toggle().ok();
+
     let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
         periph.E_USCI_A1,
         BitOrder::LsbFirst,
@@ -75,6 +79,7 @@ fn main() -> ! {
         9600)
         .use_aclk(&aclk)
         .split(debug_serial_pins.tx, debug_serial_pins.rx);
+
     led_pins.red_led.toggle().ok();
     // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
     let mut serial_writer = SerialWriter::new(serial_tx_pin);
@@ -86,9 +91,8 @@ fn main() -> ! {
     AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
     //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
     ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
-    payload.dac.send_command(dac::DACCommand::WriteToAndUpdateRegisterX, pcb_mapping::power_supply_locations::CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL, 1023, payload_spi_controller.borrow());
 
-    //let mut payload = payload.into_disabled_heater().into_disabled_payload();
+    let mut payload = payload.into_disabled_heater().into_disabled_payload();
     idle_loop(&mut led_pins);
 }
 

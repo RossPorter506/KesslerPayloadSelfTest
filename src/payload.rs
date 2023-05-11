@@ -126,17 +126,14 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
     // LMS
     pub fn get_lms_receiver_1_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
         let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
-        todo!();
         return adc_voltage;
     }
     pub fn get_lms_receiver_2_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
         let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
-        todo!();
         return adc_voltage;
     }
     pub fn get_lms_receiver_3_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
         let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
-        todo!();
         return adc_voltage;
     }
 }

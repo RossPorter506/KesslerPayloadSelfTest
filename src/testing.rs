@@ -1,7 +1,6 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
-use replace_with::replace_with;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
@@ -760,7 +759,7 @@ impl ManualPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
 
-            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
+            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
             delay_cycles(100_000); //settling time
 
             uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
@@ -774,7 +773,7 @@ impl ManualPerformanceTests{
 
         let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         voltage_result
-}
+    }
 }
 
 /// Functional test result.
