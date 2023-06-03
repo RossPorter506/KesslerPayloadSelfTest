@@ -8,7 +8,7 @@
 
 use crate::clock::{Aclk, Clock, Smclk};
 use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4};
-use crate::hw_traits::eusci::{EUsciUart, UcaxStatw, Ucssel, UcxCtl0};
+use crate::hw_traits::eusci::{EUsciUart, UcaxStatwUart, Ucssel, UcxCtl0Uart};
 use core::marker::PhantomData;
 use embedded_hal::serial::{Read, Write};
 use msp430fr2355 as pac;
@@ -24,7 +24,7 @@ pub enum BitOrder {
 
 impl BitOrder {
     #[inline(always)]
-    fn to_bool(self) -> bool {
+    pub(crate) fn to_bool(self) -> bool {
         match self {
             BitOrder::LsbFirst => false,
             BitOrder::MsbFirst => true,
@@ -43,7 +43,7 @@ pub enum BitCount {
 
 impl BitCount {
     #[inline(always)]
-    fn to_bool(self) -> bool {
+    pub(crate) fn to_bool(self) -> bool {
         match self {
             BitCount::EightBits => false,
             BitCount::SevenBits => true,
@@ -111,7 +111,7 @@ pub enum Loopback {
 
 impl Loopback {
     #[inline(always)]
-    fn to_bool(self) -> bool {
+    pub(crate) fn to_bool(self) -> bool {
         match self {
             Loopback::NoLoop => false,
             Loopback::Loopback => true,
@@ -402,7 +402,7 @@ impl<USCI: SerialUsci> SerialConfig<USCI, ClockSet> {
         usci.brw_settings(baud_config.br);
         usci.mctlw_settings(baud_config.ucos16, baud_config.brs, baud_config.brf);
         usci.loopback(self.loopback.to_bool());
-        usci.ctl0_settings(UcxCtl0 {
+        usci.ctl0_settings(UcxCtl0Uart {
             ucpen: self.parity.ucpen(),
             ucpar: self.parity.ucpar(),
             ucmsb: self.order.to_bool(),
