@@ -9,47 +9,11 @@
 use crate::clock::{Aclk, Clock, Smclk};
 use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4};
 use crate::hw_traits::eusci::{EUsciUart, UcaxStatwUart, Ucssel, UcxCtl0Uart};
+//Re-export so users can do serial::BitOrder, rather than eusci_utils::BitOrder.
+pub use crate::eusci_utils::{BitOrder, BitCount, Loopback};
 use core::marker::PhantomData;
 use embedded_hal::serial::{Read, Write};
 use msp430fr2355 as pac;
-
-/// Bit order of transmit and receive
-#[derive(Clone, Copy)]
-pub enum BitOrder {
-    /// LSB first (typically the default)
-    LsbFirst,
-    /// MSB first
-    MsbFirst,
-}
-
-impl BitOrder {
-    #[inline(always)]
-    pub(crate) fn to_bool(self) -> bool {
-        match self {
-            BitOrder::LsbFirst => false,
-            BitOrder::MsbFirst => true,
-        }
-    }
-}
-
-/// Number of bits per transaction
-#[derive(Clone, Copy)]
-pub enum BitCount {
-    /// 8 bits
-    EightBits,
-    /// 7 bits
-    SevenBits,
-}
-
-impl BitCount {
-    #[inline(always)]
-    pub(crate) fn to_bool(self) -> bool {
-        match self {
-            BitCount::EightBits => false,
-            BitCount::SevenBits => true,
-        }
-    }
-}
 
 /// Number of stop bits at end of each byte
 #[derive(Clone, Copy)]
@@ -96,25 +60,6 @@ impl Parity {
             Parity::OddParity => false,
             Parity::EvenParity => true,
             _ => false,
-        }
-    }
-}
-
-/// Loopback settings
-#[derive(Clone, Copy)]
-pub enum Loopback {
-    /// No loopback
-    NoLoop,
-    /// Tx feeds into Rx
-    Loopback,
-}
-
-impl Loopback {
-    #[inline(always)]
-    pub(crate) fn to_bool(self) -> bool {
-        match self {
-            Loopback::NoLoop => false,
-            Loopback::Loopback => true,
         }
     }
 }

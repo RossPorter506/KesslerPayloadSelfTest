@@ -8,8 +8,10 @@ use embedded_hal::spi::{FullDuplex};
 use msp430fr2355 as pac;
 use crate::clock::{Aclk, Smclk, Clock};
 use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4};
-use crate::serial::{BitOrder, BitCount, Loopback};
 use crate::hw_traits::eusci::{EUsciSpi, UcxCtl0Spi, UcsselSpi, UcaxStatwSpi};
+//Re-export so users can do spi::BitOrder, etc.
+pub use crate::eusci_utils::{BitOrder, BitCount, Loopback};
+
 /// Spi bus object. Use to send or receive data.
 /// 
 /// Note that read() merely reads the receive buffer, so a packet must be first sent to a slave before data can be read. 
@@ -49,13 +51,27 @@ impl<USCI: SpiUsci> FullDuplex<u8> for SpiBus<USCI> {
         }
     }
 }
+
+// Blocking implementations
+impl<USCI: SpiUsci> embedded_hal::blocking::spi::transfer::Default<u8> for SpiBus<USCI> {}
+impl<USCI: SpiUsci> embedded_hal::blocking::spi::write::Default<u8> for SpiBus<USCI> {}
+
 impl<USCI:SpiUsci> SpiBus<USCI> {
-    /// Duplex. Send a word, and return the received word.
-    pub fn send_then_read(&mut self, word: u8) -> nb::Result<u8, SpiError> {
-        self.send(word).ok();
-        self.read()
+    /// Reconfigure common elements without remaking the bus.
+    pub fn reconfigure(&mut self,
+        polarity: Polarity, phase: Phase, 
+        order: BitOrder, count: BitCount,
+        ) {
+        
+        self.usci.ctl0_reset();
+        self.usci.modify_ctl0_settings(
+            phase.into(),
+            polarity.into(),
+            order.to_bool(),
+            count.to_bool(),
+        );
     }
-    /// Duplex. Copy the contents of the receive buffer, send a word, and return the copied contents of the receive buffer.
+
     /// Consume the SPI bus and return the GPIO pins.
     pub fn return_pins(self) -> (USCI::SckPin, USCI::MosiPin, USCI::MisoPin) {
         (self.sck, self.mosi, self.miso)
