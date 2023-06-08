@@ -10,4 +10,7 @@ On Linux you probably just need to point it to the regular nightly toolchain.
 
 To install the msp430 part of the toolchain, download msp430-gcc from `https://www.ti.com/tool/MSP430-GCC-OPENSOURCE#downloads` (installer or toolchain only), and make sure they're on your PATH.
 
-To flash the binary, either use code composer studio (within a correctly configured project, click the dropdown icon net to the 'flash' icon and pick 'select file to flash') or use uniflash (TODO).
+To flash the binary, either use code composer studio (within a correctly configured project, click the dropdown icon net to the 'flash' icon and pick 'select file to flash') or use the uniflash CLI (below).
+
+To use uniflash, open the program and auto-detect or input the board (MSP430FR2355). Click on 'standalone command-line' to generate a .zip file with all you need to flash the board.
+Extract this folder so that dslite.bat is at ./uniflash/dslite.bat within the project. The project can be configured to run dslite.bat by changing the runner option in .cargo/config.
