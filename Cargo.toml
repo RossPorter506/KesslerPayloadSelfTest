@@ -41,3 +41,6 @@ debug = true
 
 [profile.dev.package."*"]
 opt-level = "z"
+
+[profile.dev.package.compiler_builtins]
+overflow-checks = false

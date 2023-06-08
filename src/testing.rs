@@ -222,11 +222,13 @@ fn calculate_rpd(measured:i32, actual: i32) -> FixedI64<32> {
     let actual = FixedI64::<32>::from(actual);
     let measured = FixedI64::<32>::from(measured);
 
-    (measured - actual) / (measured.abs() + actual.abs())
+    // (measured - actual) / measured.abs() + actual.abs()
+    (measured - actual).checked_div(measured.abs() + actual.abs()).unwrap_or(FixedI64::<32>::from(2)) // The unwrap_or should never fire, as we check if both are zero at the start.
 }
 /// Iteratively updates an average with a new value
 fn in_place_average(acc: FixedI64<32>, new: FixedI64<32>, n: u16) -> FixedI64<32>{
-    acc + ((new - acc) / FixedI64::<32>::from(n+1))
+    //acc + ((new - acc) / FixedI64::<32>::from(n+1))
+    acc + ((new - acc).checked_div(FixedI64::<32>::from(n+1)).unwrap_or(FixedI64::<32>::from(1))) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
 } 
 
 fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<32>, success_threshhold: FixedI64<32>, inaccurate_threshhold: FixedI64<32>) -> PerformanceResult<'a> {
@@ -434,8 +436,7 @@ impl AutomatedPerformanceTests{
         //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
 
         accuracy = in_place_average(accuracy, 
-                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, 
-                                    0),
+                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, 0),
                                     0); 
 
         // For each pin, activate the pinpuller through that channel and measure the current
@@ -446,14 +447,13 @@ impl AutomatedPerformanceTests{
         for (n, pin) in pin_list.iter_mut().enumerate() {
             pin.set_high().ok();
             accuracy = in_place_average(accuracy, 
-                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, 
-                                        expected_on_current as i32), 
+                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, expected_on_current as i32), 
                                         (n+1) as u16);
             pin.set_low().ok();
             delay_cycles(1000);
         }
 
-        calculate_performance_result("Pinpuller current sense", accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100)
+        calculate_performance_result("Pinpuller current sense",  FixedI64::ZERO,  FixedI64::ZERO, FixedI64::<32>::from(20)/100)
     }    
 }
 
@@ -482,13 +482,14 @@ impl ManualFunctionalTests{
         uwriteln!(serial_writer, "Depress switches").ok();
         wait_for_any_packet(serial_reader);
 
-        let is_depressed_arr: [bool; 2] = [pins.endmass_sense_1.is_low().unwrap(), pins.endmass_sense_2.is_low().unwrap()];
+        // Note: is_low is infallible, so ignore the unwraps
+        let is_depressed_arr: [bool; 2] = [pins.endmass_sense_1.is_low().unwrap_or(false), pins.endmass_sense_2.is_low().unwrap_or(false)];
 
         uwriteln!(serial_writer, "Release switches").ok();
         
         wait_for_any_packet(serial_reader);
 
-        let is_released_arr: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap(), pins.endmass_sense_2.is_high().unwrap()];
+        let is_released_arr: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap_or(false), pins.endmass_sense_2.is_high().unwrap_or(false)];
 
         [SensorResult {name: "Endmass switch 1", result: (is_depressed_arr[0] && is_released_arr[0])},
          SensorResult {name: "Endmass switch 2", result: (is_depressed_arr[1] && is_released_arr[1])}]

@@ -10,10 +10,15 @@ use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
 #[allow(unused_imports)]
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
-use panic_msp430 as _;
 use msp430;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
+
+#[cfg(debug_assertions)]
+use panic_msp430 as _;
+
+#[cfg(not(debug_assertions))]
+use panic_never as _;
 
 pub mod pcb_common; // pcb_mapping re-exports these values, so no need to interact with this file.
 // This line lets every other file do 'use pcb_mapping', we only have to change the version once here.
@@ -33,67 +38,69 @@ mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, 
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
-    let periph = msp430fr2355::Peripherals::take().unwrap();
-    let _wdt = Wdt::constrain(periph.WDT_A);
-    
-    let (payload_spi_pins, 
-        mut pinpuller_pins, 
-        mut led_pins, 
-        mut payload_control_pins, 
-        mut lms_control_pins, 
-        mut deploy_sense_pins, 
-        mut payload_peripheral_cs_pins, 
-        debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
-    
-    lms_control_pins.lms_led_enable.set_high().ok();
-    led_pins.green_led.toggle().ok();
-    payload_peripheral_cs_pins.dac.set_high().ok();
-    payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
-    delay_cycles(100_000);
-    
-    // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
-    // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
-    let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
+    if let Some(periph) = msp430fr2355::Peripherals::take() {
+        let _wdt = Wdt::constrain(periph.WDT_A);
+        
+        let (payload_spi_pins, 
+            mut pinpuller_pins, 
+            mut led_pins, 
+            mut payload_control_pins, 
+            mut lms_control_pins, 
+            mut deploy_sense_pins, 
+            mut payload_peripheral_cs_pins, 
+            debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
+        
+        lms_control_pins.lms_led_enable.set_high().ok();
+        led_pins.green_led.toggle().ok();
+        payload_peripheral_cs_pins.dac.set_high().ok();
+        payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
+        delay_cycles(100_000);
+        
+        // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
+        // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
+        let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
 
-    // Collate peripherals into a single struct
-    let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
-    // Create an object to manage payload state
-    let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
-    
-    let mut fram = Fram::new(periph.FRCTL);
+        // Collate peripherals into a single struct
+        let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
+        // Create an object to manage payload state
+        let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
+        
+        let mut fram = Fram::new(periph.FRCTL);
 
-    let (smclk, aclk) = ClockConfig::new(periph.CS)
-        .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
-        .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
-        .freeze(&mut fram);
+        let (smclk, aclk) = ClockConfig::new(periph.CS)
+            .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
+            .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
+            .freeze(&mut fram);
 
-    led_pins.yellow_led.toggle().ok();
+        led_pins.yellow_led.toggle().ok();
 
-    let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
-        periph.E_USCI_A1,
-        BitOrder::LsbFirst,
-        BitCount::EightBits,
-        StopBits::OneStopBit,
-        Parity::NoParity,
-        Loopback::NoLoop,
-        9600)
-        .use_aclk(&aclk)
-        .split(debug_serial_pins.tx, debug_serial_pins.rx);
+        let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
+            periph.E_USCI_A1,
+            BitOrder::LsbFirst,
+            BitCount::EightBits,
+            StopBits::OneStopBit,
+            Parity::NoParity,
+            Loopback::NoLoop,
+            9600)
+            .use_aclk(&aclk)
+            .split(debug_serial_pins.tx, debug_serial_pins.rx);
 
-    led_pins.red_led.toggle().ok();
-    // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
-    let mut serial_writer = SerialWriter::new(serial_tx_pin);
+        led_pins.red_led.toggle().ok();
+        // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
+        let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-    payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, payload_spi_controller.borrow());
-    let mut payload = payload.into_enabled_heater();
-    
-    AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-    AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
-    //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
-    ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, payload_spi_controller.borrow());
+        let mut payload = payload.into_enabled_heater();
+        
+        AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
+        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
+        //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
-    let mut payload = payload.into_disabled_heater().into_disabled_payload();
-    idle_loop(&mut led_pins);
+        let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        idle_loop(&mut led_pins);
+    }
+    else {loop{}}
 }
 
 fn idle_loop(led_pins: &mut LEDPins) -> ! {
