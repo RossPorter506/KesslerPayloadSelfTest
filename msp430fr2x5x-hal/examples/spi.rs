@@ -20,7 +20,7 @@ use panic_msp430 as _;
 #[cfg(not(debug_assertions))]
 use panic_never as _;
 
-// Prints "HELLO" when started then echos on euSCI_A0.
+// Configures the eUSCI_A0 peripheral for SPI, prints "HELLO" to (theoretical) device 1, then echos to (theoretical) device 2.
 // Spi settings are listed in the code
 #[entry]
 fn main() -> ! {
@@ -39,24 +39,42 @@ fn main() -> ! {
         let mut led = p1.pin0.to_output();
         led.set_low().ok();
 
+        let mut chip_select_1 = p1.pin1.to_output();
+        chip_select_1.set_high().ok();
+        let mut chip_select_2 = p1.pin2.to_output();
+        chip_select_2.set_high().ok();
+
+        // Configure SPI bus parameters
         let mut spi_bus = SpiConfig::new(
             periph.E_USCI_A0,
             Polarity::IdleHigh, Phase::CaptureOnFirstEdge,
             BitOrder::MsbFirst, BitCount::EightBits,
             Loopback::NoLoop, 250_000)
             .use_smclk(&smclk)
-            .apply_config(p1.pin5.to_alternate1(), p1.pin6.to_alternate1(), p1.pin7.to_alternate1());
+            .apply_config(
+                p1.pin5.to_output().to_alternate1(), 
+                p1.pin6.to_output().to_alternate1(), 
+                p1.pin7.to_output().to_alternate1());
 
-        led.set_high().ok();
-        let mut buf: [u8; 6] = *b"HELLO\n";
+        led.set_high().ok(); //Configuration complete!
+
+        // Begin transmission to device 1.
+        chip_select_1.set_low().ok();
+        let mut buf: [u8; 6] = *b"HELLO";
         spi_bus.transfer(&mut buf).ok();
 
+        // Ensure that transmission has finished before we de-assert CS and reconfigure the bus.
+        block!(spi_bus.flush()).ok();
+
+        chip_select_1.set_high().ok();
         spi_bus.reconfigure(
             Polarity::IdleLow, Phase::CaptureOnSecondEdge,
             BitOrder::MsbFirst, BitCount::EightBits
         );
 
+        chip_select_2.set_low().ok();
         loop {
+            
             let ch = match block!(spi_bus.read()) {
                 Ok(c) => c,
                 Err(SpiError::Overrun(_)) => '!' as u8,
@@ -64,6 +82,12 @@ fn main() -> ! {
             };
             block!(spi_bus.send(ch)).ok();
         }
+        // chip_select_2.set_high().ok();
+
+        // Once you are done, you can consume the bus to release the hardware pins.
+        // let (port1pin5, _port1pin6, _port1pin7) = spi_bus.return_pins();
+        // port1pin5.to_gpio().set_high().ok();
+
     } else {
         loop {}
     }

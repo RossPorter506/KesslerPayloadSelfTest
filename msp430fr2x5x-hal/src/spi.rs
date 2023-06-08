@@ -7,7 +7,7 @@
 use embedded_hal::spi::{FullDuplex};
 use msp430fr2355 as pac;
 use crate::clock::{Aclk, Smclk, Clock};
-use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4};
+use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4, Output};
 use crate::hw_traits::eusci::{EUsciSpi, UcxCtl0Spi, UcsselSpi, UcaxStatwSpi};
 //Re-export so users can do spi::BitOrder, etc.
 pub use crate::eusci_utils::{BitOrder, BitCount, Loopback};
@@ -58,6 +58,7 @@ impl<USCI: SpiUsci> embedded_hal::blocking::spi::write::Default<u8> for SpiBus<U
 
 impl<USCI:SpiUsci> SpiBus<USCI> {
     /// Reconfigure common elements without remaking the bus.
+    #[inline]
     pub fn reconfigure(&mut self,
         polarity: Polarity, phase: Phase, 
         order: BitOrder, count: BitCount,
@@ -72,7 +73,19 @@ impl<USCI:SpiUsci> SpiBus<USCI> {
         );
     }
 
-    /// Consume the SPI bus and return the GPIO pins.
+    /// Check if transmission has completed. Check this before de-asserting chip select.
+    #[inline]
+    pub fn flush(&mut self) -> nb::Result<(), SpiError> {
+        let usci = unsafe { USCI::steal() };
+        if usci.txifg_rd() {
+            Ok(())
+        } else {
+            Err(nb::Error::WouldBlock)
+        }
+    }
+
+    /// Consume the SPI bus to return the GPIO pins.
+    #[inline]
     pub fn return_pins(self) -> (USCI::SckPin, USCI::MosiPin, USCI::MisoPin) {
         (self.sck, self.mosi, self.miso)
     }
@@ -234,7 +247,7 @@ pub struct ClockSet {
     clksel: UcsselSpi,
 }
 
-/// Shared trait that all SPI-capable peripherals implement
+/// Shared trait that all SPI-capable peripherals implement. See macro calls below for pin numbers.
 pub trait SpiUsci: EUsciSpi {
     /// Pin used for serial SCK
     type SckPin;
@@ -246,77 +259,34 @@ pub trait SpiUsci: EUsciSpi {
 
 macro_rules! impl_SpiUsci {
     ($EUsci:ident, 
-     $ClkPinType:ident, $ClkPin:ty, 
-     $TxPinType:ident,  $TxPin:ty, 
-     $RxPinType:ident,  $RxPin:ty
+     $ClkPinType:ty, 
+     $MosiPinType:ty, 
+     $MisoPinType:ty
      ) => {
         impl SpiUsci for pac::$EUsci {
             type SckPin = $ClkPinType;
-            type MosiPin = $TxPinType;
-            type MisoPin = $RxPinType;
-        }
-
-        impl<DIR> From<$ClkPin> for $ClkPinType {
-            #[inline(always)]
-            fn from(_val: $ClkPin) -> $ClkPinType {
-                $ClkPinType
-            }
-        }
-        impl<DIR> From<$RxPin> for $RxPinType {
-            #[inline(always)]
-            fn from(_val: $RxPin) -> $RxPinType {
-                $RxPinType
-            }
-        }
-        impl<DIR> From<$TxPin> for $TxPinType {
-            #[inline(always)]
-            fn from(_val: $TxPin) -> $TxPinType {
-                $TxPinType
-            }
+            type MosiPin = $MosiPinType;
+            type MisoPin = $MisoPinType;
         }
     };
 }
 
-/// SCK pin for eUSCI A0
-pub struct UsciA0SckPin;
-/// MOSI pin for eUSCI A0
-pub struct UsciA0MosiPin;
-/// MISO pin for eUSCI A0
-pub struct UsciA0MisoPin;
 impl_SpiUsci!(E_USCI_A0, 
-    UsciA0SckPin,   Pin<P1, Pin5, Alternate1<DIR>>, 
-    UsciA0MisoPin,  Pin<P1, Pin6, Alternate1<DIR>>,
-    UsciA0MosiPin,  Pin<P1, Pin7, Alternate1<DIR>>);
+    Pin<P1, Pin5, Alternate1<Output>>, // Sck
+    Pin<P1, Pin6, Alternate1<Output>>, // Mosi
+    Pin<P1, Pin7, Alternate1<Output>>);// Miso
 
-/// SCK pin for eUSCI A1
-pub struct UsciA1SckPin;
-/// MOSI pin for eUSCI A1
-pub struct UsciA1MosiPin;
-/// MISO pin for eUSCI A1
-pub struct UsciA1MisoPin;
 impl_SpiUsci!(E_USCI_A1, 
-    UsciA1SckPin,   Pin<P4, Pin1, Alternate1<DIR>>,
-    UsciA1MisoPin,  Pin<P4, Pin2, Alternate1<DIR>>,
-    UsciA1MosiPin,  Pin<P4, Pin3, Alternate1<DIR>>);
+    Pin<P4, Pin1, Alternate1<Output>>,
+    Pin<P4, Pin2, Alternate1<Output>>,
+    Pin<P4, Pin3, Alternate1<Output>>);
 
-/// SCK pin for eUSCI B0
-pub struct UsciB0SckPin;
-/// MOSI pin for eUSCI B0
-pub struct UsciB0MosiPin;
-/// MISO pin for eUSCI B0
-pub struct UsciB0MisoPin;
 impl_SpiUsci!(E_USCI_B0, 
-    UsciB0SckPin,   Pin<P1, Pin1, Alternate1<DIR>>, 
-    UsciB0MisoPin,  Pin<P1, Pin3, Alternate1<DIR>>,
-    UsciB0MosiPin,  Pin<P1, Pin2, Alternate1<DIR>>);
+    Pin<P1, Pin1, Alternate1<Output>>, 
+    Pin<P1, Pin3, Alternate1<Output>>,
+    Pin<P1, Pin2, Alternate1<Output>>);
 
-/// SCK pin for eUSCI B1
-pub struct UsciB1SckPin;
-/// MOSI pin for eUSCI B1
-pub struct UsciB1MosiPin;
-/// MISO pin for eUSCI B1
-pub struct UsciB1MisoPin;
 impl_SpiUsci!(E_USCI_B1, 
-    UsciB1SckPin,   Pin<P4, Pin5, Alternate1<DIR>>,
-    UsciB1MisoPin,  Pin<P4, Pin7, Alternate1<DIR>>,
-    UsciB1MosiPin,  Pin<P4, Pin6, Alternate1<DIR>>);
+    Pin<P4, Pin5, Alternate1<Output>>,
+    Pin<P4, Pin7, Alternate1<Output>>,
+    Pin<P4, Pin6, Alternate1<Output>>);
