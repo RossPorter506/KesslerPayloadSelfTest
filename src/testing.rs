@@ -192,7 +192,7 @@ impl AutomatedFunctionalTests{
 
         // Record max voltage/light value
         for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
-            ambient_counts[n] = payload.misc_adc.read_count_from(&sensor, spi_bus.borrow());
+            ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
         }
 
         // Enable LEDs
@@ -200,7 +200,7 @@ impl AutomatedFunctionalTests{
 
         // Record max voltage/light value
         for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
-            on_counts[n] = payload.misc_adc.read_count_from(&sensor, spi_bus.borrow());
+            on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
         }
 
         lms_control.lms_receiver_enable.set_low().ok();
@@ -231,8 +231,7 @@ fn in_place_average(acc: FixedI64<32>, new: FixedI64<32>, n: u16) -> FixedI64<32
     acc + ((new - acc).checked_div(FixedI64::<32>::from(n+1)).unwrap_or(FixedI64::<32>::from(1))) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
 } 
 
-fn calculate_performance_result<'a, 'b>(name: &'a str, rpd: FixedI64<32>, success_threshhold: FixedI64<32>, inaccurate_threshhold: FixedI64<32>) -> PerformanceResult<'a> {
-
+fn calculate_performance_result(name: &str, rpd: FixedI64<32>, success_threshhold: FixedI64<32>, inaccurate_threshhold: FixedI64<32>) -> PerformanceResult<'_> {
     let performance = match rpd.abs() {
         x if x < success_threshhold    => Performance::Nominal,
         x if x < inaccurate_threshhold => Performance::Inaccurate,
@@ -313,7 +312,7 @@ impl AutomatedPerformanceTests{
     /// These closures take the payload controller and a function pointer to the desired function (alongside any other inputs).
     /// These are combined into the desired function call inside the closure.
     //  I tried with regular function pointers, but Rust didn't enjoy the const generic subtypes.
-    fn test_hvdc_supply<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+    fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
         set_switch_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, SwitchState), 
         measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
         measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
@@ -543,7 +542,7 @@ fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState,
     
     let mut output_arr: [PerformanceResult; 8] = [PerformanceResult::default(); 8];
     for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {
-        let tempr = payload.get_temperature_kelvin(&sensor, spi_bus);
+        let tempr = payload.get_temperature_kelvin(sensor, spi_bus);
         let accuracy = calculate_rpd(tempr as i32, room_temp_k as i32);
         output_arr[n] = calculate_performance_result(name, 
                                                      accuracy, 
@@ -584,7 +583,8 @@ impl ManualPerformanceTests{
     /// Get room temp from user
     fn query_room_temp<USCI:SerialUsci>(serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> u16 {
         uwriteln!(serial_writer, "Enter current temp (in celcius)").ok();
-        return (read_num(serial_writer, serial_reader) + CELCIUS_TO_KELVIN_OFFSET as i32) as u16;
+        let celcius_num = read_num(serial_writer, serial_reader);
+        (celcius_num + CELCIUS_TO_KELVIN_OFFSET as i32) as u16
     }
     pub fn two_point_test_temperature_sensor_test<'a, USCI: SerialUsci, const DONTCARE: HeaterState>( 
             payload: &'a mut PayloadController<{PayloadOff}, DONTCARE>, // Minimise heat generation
@@ -632,7 +632,7 @@ impl ManualPerformanceTests{
 
         for (i, output_percentage) in (1..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u16 = ((output_percentage * DAC_VCC_VOLTAGE_MILLIVOLTS as u32) / 100) as u16;
-            let dac_count = DAC::voltage_to_count(output_voltage_mv as u16);
+            let dac_count = DAC::voltage_to_count(output_voltage_mv);
             uwriteln!(debug_writer, "Target output voltage: {}mV. DAC count: {}", output_voltage_mv, dac_count).ok();
 
             // Set DAC voltage

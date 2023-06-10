@@ -21,7 +21,7 @@ pub trait PayloadSPI<const POLARITY: SckPolarity, const PHASE: SckPhase>{
 
 // Peripherals expect the bus left high or low when idle, and some read rising edges while others read falling edges.
 // Encode this in types so peripherals can enforce a correct configuration
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, core::marker::ConstParamTy)]
 pub enum SckPolarity {
     IdleHigh,
     IdleLow,
@@ -29,7 +29,7 @@ pub enum SckPolarity {
 use SckPolarity::*;
 
 /// Not quite equivalent to standard SPI clock phase (i.e. first/second edge instead of rising/falling). All our devices use the first edge though, so it's easier this way.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, core::marker::ConstParamTy)]
 pub enum SckPhase {
     /// Read the bus on the first edge, write on the second.
     SampleFirstEdge,
