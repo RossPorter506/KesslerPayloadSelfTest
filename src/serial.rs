@@ -32,9 +32,8 @@ impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
 // Block until we receive any packet over serial
 pub fn wait_for_any_packet<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> u8{
     loop {
-        match serial_reader.read() {
-            Ok(packet) => return packet,
-            _ => (),
+        if let Ok(packet) = serial_reader.read(){
+            return packet;
         }
     }
 }
@@ -81,10 +80,10 @@ pub fn read_num<USCI: SerialUsci>(debug_writer: &mut SerialWriter<USCI>, serial_
 }
 
 fn is_ascii_number(c: u8) -> bool {
-    c >= ASCII_ZERO && c <= ASCII_NINE
+    (ASCII_ZERO..=ASCII_NINE).contains(&c)
 }
 
-const ASCII_ZERO: u8 = '0' as u8;
-const ASCII_NINE: u8 = '9' as u8;
-const CARRIAGE_RETURN: u8 = '\r' as u8; 
-const NEGATIVE_SIGN: u8 = '-' as u8;
+const ASCII_ZERO: u8 = b'0';
+const ASCII_NINE: u8 = b'9';
+const CARRIAGE_RETURN: u8 = b'\r'; 
+const NEGATIVE_SIGN: u8 = b'-';

@@ -88,12 +88,10 @@ pub const NUM_LEADING_ZEROES: u8 = 2;
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
     pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> u16{
-        let reading: u16;
-        
         // When SPI packet begins the ADC will track and read channel 1 regardless. 
         // If we want another channel we have to wait until it's finished sending this.
         if wanted_sensor.channel() == ADCChannel::IN0 {
-            reading = spi_bus.receive(NUM_CYCLES_FOR_ONE_READING, &mut self.cs_pin) as u16;
+            return spi_bus.receive(NUM_CYCLES_FOR_ONE_READING, &mut self.cs_pin) as u16;
         }
         else{
             // We need to send the channel we want to read two edges after the start, and it's three bits long.
@@ -102,15 +100,14 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
             let data_packet = (wanted_sensor.channel() as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES);
 
             let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut self.cs_pin);
-            reading = (result & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
+            return (result & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
         }
-        reading
     }
     pub fn count_to_voltage(&self, count: u16) -> u16{
         ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16
     }
     pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> u16{
-        let count = self.read_count_from(&wanted_sensor, spi_bus);
+        let count = self.read_count_from(wanted_sensor, spi_bus);
         self.count_to_voltage(count)
     }
 }

@@ -10,7 +10,6 @@ use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
 #[allow(unused_imports)]
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
-use msp430;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -63,7 +62,7 @@ fn main() -> ! {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::new(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -100,7 +99,7 @@ fn main() -> ! {
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
         idle_loop(&mut led_pins);
     }
-    else {loop{}}
+    else {#[allow(clippy::empty_loop)] loop{}}
 }
 
 fn idle_loop(led_pins: &mut LEDPins) -> ! {

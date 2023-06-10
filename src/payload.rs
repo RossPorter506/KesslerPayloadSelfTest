@@ -17,28 +17,22 @@ pub fn enforce_bounds<T: Ord>(lower_bound: T, num: T, upper_bound: T) -> T{
 
 // Typestates to indicate whether the payload is powered. If the payload is not powered, trying to enable the heater (or really setting any pins connected to the payload) is potentially damaging. 
 // Hence valid states are: (PayloadOff, HeaterOff) <-> (PayloadOn, HeaterOff) <-> (PayloadOn, HeaterOn)
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, core::marker::ConstParamTy)]
 pub enum PayloadState {
     PayloadOn,
     PayloadOff,
 } use PayloadState::*;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, core::marker::ConstParamTy)]
 pub enum HeaterState {
     HeaterOn,
     HeaterOff,
 } use HeaterState::*;
 
 pub struct PayloadBuilder {
-    tether_adc: TetherADC,
-    temperature_adc: TemperatureADC,
-    misc_adc: MiscADC,
-    dac: DAC,
-    digipot: Digipot,
-    pins: PayloadControlPins,
 }
 impl PayloadBuilder{
-    pub fn new(periph: PayloadPeripherals, mut pins: PayloadControlPins) -> PayloadController<{PayloadOff}, {HeaterOff}> {
+    pub fn build(periph: PayloadPeripherals, mut pins: PayloadControlPins) -> PayloadController<{PayloadOff}, {HeaterOff}> {
         pins.heater_enable.set_low().ok();
         pins.payload_enable.set_low().ok();
         
@@ -48,7 +42,7 @@ impl PayloadBuilder{
             misc_adc: periph.misc_adc, 
             dac: periph.dac, 
             digipot: periph.digipot, 
-            pins: pins}
+            pins}
     }
 }
 
@@ -125,16 +119,13 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
 
     // LMS
     pub fn get_lms_receiver_1_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_1_SENSOR, spi_bus);
-        return adc_voltage;
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_1_SENSOR, spi_bus)
     }
     pub fn get_lms_receiver_2_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_2_SENSOR, spi_bus);
-        return adc_voltage;
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_2_SENSOR, spi_bus)
     }
     pub fn get_lms_receiver_3_millivolts(&mut self, spi_bus: &mut impl PayloadSPI<{IdleHigh},{SampleFirstEdge}>) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&LMS_RECEIVER_3_SENSOR, spi_bus);
-        return adc_voltage;
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_3_SENSOR, spi_bus)
     }
 }
 // These functions are only available when the payload is on.
