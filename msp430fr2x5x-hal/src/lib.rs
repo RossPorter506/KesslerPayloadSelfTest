@@ -25,6 +25,7 @@
 #![allow(incomplete_features)] // Enable specialization without warnings
 #![feature(specialization)]
 #![feature(asm_experimental_arch)]
+#![feature(adt_const_params)]
 #![deny(missing_docs)]
 
 pub mod batch_gpio;
