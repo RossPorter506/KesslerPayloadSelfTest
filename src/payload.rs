@@ -7,7 +7,7 @@ use embedded_hal::digital::v2::OutputPin;
 use crate::digipot::Digipot; 
 use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC, VccType};
 use crate::dac::{DAC, DACCommand};
-use crate::spi::{PayloadSPIController, SckPolarity::IdleLow, SckPolarity::IdleHigh, SckPhase::SampleFirstEdge};
+use crate::spi::PayloadSPIController;
 use crate::pcb_mapping::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
 
 // Returns num such that "lower bound <= num <= upper_bound"

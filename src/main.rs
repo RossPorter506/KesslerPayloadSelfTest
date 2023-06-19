@@ -5,11 +5,13 @@
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
 
-use embedded_hal::{digital::v2::*};
+use embedded_hal::{digital::v2::*, spi::FullDuplex};
 use msp430_rt::entry;
-use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
+use msp430fr2355::{P2, P3, P4, P5, P6, PMM, E_USCI_B1};
+use msp430fr2x5x_hal::{spi::SpiConfig, clock::Smclk, hw_traits::eusci::EUsciSpi};
 #[allow(unused_imports)]
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{hw_traits::eusci::EUsci, gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -23,9 +25,12 @@ pub mod pcb_common; // pcb_mapping re-exports these values, so no need to intera
 // This line lets every other file do 'use pcb_mapping', we only have to change the version once here.
 mod pcb_mapping { include!("pcb_v6_mapping.rs"); }
 
-use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
-mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, SckPolarity::IdleLow};
-mod spi_peripheral;
+use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS, PayloadSPIPins};
+
+// Switch between bitbanging and peripheral here
+//mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, SckPolarity::IdleLow};
+mod spi { include!("spi_peripheral.rs");} use spi::{PayloadSPIController, PayloadSPI, Polarity, Phase};
+
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
@@ -54,24 +59,25 @@ fn main() -> ! {
         led_pins.green_led.toggle().ok();
         payload_peripheral_cs_pins.dac.set_high().ok();
         payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
-        delay_cycles(100_000);
+        
+        let mut fram = Fram::new(periph.FRCTL);
+        let (smclk, aclk) = ClockConfig::new(periph.CS)
+            .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
+            .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
+            .freeze(&mut fram);
+        for _ in 0..2 {msp430::asm::nop();} // give time to freeze clocks...?
+
+        led_pins.yellow_led.toggle().ok();
         
         // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
         // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
-        let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
+        let mut payload_spi_controller = setup_payload_spi(payload_spi_pins, periph.E_USCI_B1, &smclk);
 
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
         let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
         
-        let mut fram = Fram::new(periph.FRCTL);
-
-        let (smclk, aclk) = ClockConfig::new(periph.CS)
-            .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
-            .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
-            .freeze(&mut fram);
-
         led_pins.yellow_led.toggle().ok();
 
         let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
@@ -89,7 +95,7 @@ fn main() -> ! {
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        //payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
         let mut payload = payload.into_enabled_heater();
         
         AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
@@ -98,7 +104,7 @@ fn main() -> ! {
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
-        idle_loop(&mut led_pins);
+        idle_loop(&mut led_pins); 
     }
     else {#[allow(clippy::empty_loop)] loop{}}
 }
@@ -129,6 +135,23 @@ fn snake_leds(n: &mut u8, led_pins: &mut LEDPins){
     };
 }
 
+fn setup_payload_spi(pins: PayloadSPIPins, usci: E_USCI_B1, smclk: &Smclk) -> PayloadSPIController {
+    // when using bitbang:
+    //PayloadSPIController::new(payload_spi_pins);
+    // When using peripheral:
+    let bus = SpiConfig::new(
+        usci,
+        Polarity::IdleHigh, Phase::CaptureOnFirstEdge,
+        BitOrder::MsbFirst, BitCount::EightBits,
+        Loopback::NoLoop, 100_000)
+        .use_smclk(smclk)
+        .apply_config(
+            pins.sck,  
+            pins.mosi,
+            pins.miso);
+    PayloadSPIController::new(bus)
+}
+
 fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut PayloadSPIController) -> PayloadPeripherals{
     // Note that the peripherals gain ownership of their associated pins
     let digipot = Digipot::new(cs_pins.digipot);
@@ -141,7 +164,7 @@ fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bu
 
 // Takes raw port peripherals and returns actually useful pin collections 
 fn collect_pins(pmm: PMM, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
-    PayloadSPIBitBangPins,
+    PayloadSPIPins,
     PinpullerActivationPins,
     LEDPins,
     PayloadControlPins,
@@ -158,10 +181,10 @@ let port4 = Batch::new(p4).split(&pmm);
 let port5 = Batch::new(p5).split(&pmm);
 let port6 = Batch::new(p6).split(&pmm);
 
-let payload_spi_pins = PayloadSPIBitBangPins {
-    miso: port4.pin7.pullup(),
-    mosi: port4.pin6.to_output(),
-    sck:  port4.pin5.to_output(),};
+let payload_spi_pins = PayloadSPIPins {
+    miso: port4.pin7.to_output().to_alternate1(),
+    mosi: port4.pin6.to_output().to_alternate1(),
+    sck:  port4.pin5.to_output().to_alternate1(),};
 
 let pinpuller_pins = PinpullerActivationPins{ 
     burn_wire_1:        port3.pin2.to_output(),

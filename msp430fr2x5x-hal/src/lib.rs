@@ -26,7 +26,7 @@
 #![feature(specialization)]
 #![feature(asm_experimental_arch)]
 #![feature(adt_const_params)]
-#![deny(missing_docs)]
+//#![deny(missing_docs)] // TODO: Reinstate after debugging
 
 pub mod batch_gpio;
 pub mod capture;
@@ -42,7 +42,8 @@ pub mod spi;
 pub mod timer;
 pub mod watchdog;
 
-mod hw_traits;
+///Visible for debugging only
+pub mod hw_traits; //TODO: Make private after debugging
 mod util;
 mod eusci_utils;
 

@@ -7,7 +7,7 @@ use crate::delay_cycles;
 use crate::payload::{PayloadController, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
 use crate::serial::{SerialWriter, wait_for_any_packet};
 #[allow(unused_imports)]
-use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
+use crate::{spi::{*, Polarity::*, Phase::CaptureOnFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use crate::serial::{read_num};
@@ -60,7 +60,7 @@ impl AutomatedFunctionalTests{
     // Internal function to reduce code duplication
     fn test_adc_functional<CsPin: ADCCSPin, SENSOR: ADCSensor>(  
             adc: &mut ADC<CsPin, SENSOR>, 
-            spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>,
+            spi_bus: &mut impl PayloadSPI<{IdleHigh}, {CaptureOnFirstEdge}>,
             wanted_channel: ADCChannel) -> bool {
         let payload = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES); // see adc.rs read_count_from
         let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, payload, &mut adc.cs_pin);
@@ -75,7 +75,7 @@ impl AutomatedFunctionalTests{
     /// Dependencies: Isolated 5V supply, tether ADC, isolators
     pub fn tether_adc_functional_test<'a, const DONTCARE: HeaterState>(
             payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
-            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
+            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {CaptureOnFirstEdge}>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.tether_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Tether ADC", result }
     }
@@ -86,7 +86,7 @@ impl AutomatedFunctionalTests{
     /// Dependencies: temperature ADC
     pub fn temperature_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2: HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
-            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
+            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {CaptureOnFirstEdge}>) -> SensorResult<'a> {
         let result = Self::test_adc_functional(&mut payload.temperature_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Temperature ADC", result }
     }
@@ -97,7 +97,7 @@ impl AutomatedFunctionalTests{
     /// Dependencies: misc ADC
     pub fn misc_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
-            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
+            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {CaptureOnFirstEdge}>) -> SensorResult<'a> {
         let result =Self::test_adc_functional(&mut payload.misc_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Misc ADC", result }
     }
@@ -624,7 +624,7 @@ impl ManualPerformanceTests{
     /// Dependencies: Isolated 5V supply, DAC, isolators
     pub fn test_dac<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
-        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        spi_bus: &'a mut PayloadSPIController,
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 5;
@@ -639,7 +639,7 @@ impl ManualPerformanceTests{
             payload.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, 
                 DACChannel::ChannelC, 
                 dac_count, 
-                spi_bus);
+                spi_bus.borrow());
 
             delay_cycles(1000); //settling time
             
@@ -658,7 +658,7 @@ impl ManualPerformanceTests{
         payload.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, 
             DACChannel::ChannelA, 
             DAC::voltage_to_count(0), 
-            spi_bus);
+            spi_bus.borrow());
 
         let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         voltage_result

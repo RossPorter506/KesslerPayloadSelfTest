@@ -4,9 +4,12 @@ use core::convert::TryInto;
 use crate::pcb_mapping::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOSIBitBangPin, PayloadMISOBitBangPin, PayloadSCKBitBangPin}, PayloadSPIBitBangPins};
 use embedded_hal::{digital::v2::{OutputPin, ToggleableOutputPin, InputPin}, prelude::_embedded_hal_blocking_spi_Transfer};
 use msp430fr2355::E_USCI_B1;
-use msp430fr2x5x_hal::{gpio::*, spi::{Polarity, Phase, BitOrder, BitCount, SpiBus}};
+use msp430fr2x5x_hal::{gpio::*, spi::{BitOrder, BitCount, SpiBus}};
+pub use msp430fr2x5x_hal::spi::{Polarity, Phase, SpiError}; // Re-export from HAL
 use nb::block;
 use crate::delay_cycles;
+
+
 
 // Trait because we can implement by either bitbanging or using peripheral
 // Separate traits befause OBC_SPI might be expanded in the future (e.g. pin interrupts)
@@ -26,7 +29,7 @@ pub trait PayloadSPI<const POLARITY: Polarity, const PHASE: Phase>{
 
 /// Payload SPI implementation that uses bit banging.
 pub struct PayloadSPIPeripheral<const POLARITY: Polarity, const PHASE: Phase>{
-    bus: SpiBus<E_USCI_B1>
+    pub bus: SpiBus<E_USCI_B1>  //TODO: Make private once debugging finished
 }
 
 impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPIPeripheral<POLARITY, PHASE>{
@@ -62,7 +65,11 @@ impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPI<POLARITY, PHASE> f
         let (packets, _) = data_as_arr.as_mut_slice().split_at_mut(len as usize / 8);
 
         cs_pin.set_low().ok();
-        let read = self.bus.transfer(packets ).unwrap(); // TODO
+        let read = match self.bus.transfer(packets) {
+            Ok(v) => v,
+            Err(SpiError::Framing) => &[0], // TODO
+            Err(SpiError::Overrun(data)) => &[0], // TODO
+        }; 
         block!(self.bus.flush()).ok();
         cs_pin.set_high().ok();
         let arr: [u8;4] = packets.try_into().unwrap_or([0;4]);
@@ -82,7 +89,7 @@ impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPI<POLARITY, PHASE> f
 pub struct PayloadSPIController {
     // It looks like we can only store one type here, but we'll convert it in .borrow().
     // Trust me, this is the easiest way.
-    spi_bus: PayloadSPIPeripheral<{Polarity::IdleHigh}, {Phase::CaptureOnFirstEdge}>
+    pub spi_bus: PayloadSPIPeripheral<{Polarity::IdleHigh}, {Phase::CaptureOnFirstEdge}> //TODO: Make private once debugging finished
 }
 impl PayloadSPIController {
     /// Generates a new controller by consuming an existing SPI bus.

@@ -19,7 +19,8 @@ pub struct SpiBus<USCI: SpiUsci>{
     sck:  USCI::SckPin,
     mosi: USCI::MosiPin,
     miso: USCI::MisoPin,
-    usci: USCI,
+    /// Public for debugging only
+    pub usci: USCI, // TODO: Make private after debugging
 }
 
 impl<USCI: SpiUsci> FullDuplex<u8> for SpiBus<USCI> {
@@ -77,10 +78,11 @@ impl<USCI:SpiUsci> SpiBus<USCI> {
     #[inline]
     pub fn flush(&mut self) -> nb::Result<(), SpiError> {
         let usci = unsafe { USCI::steal() };
-        if usci.txifg_rd() {
-            Ok(())
-        } else {
+        let status_reg = usci.statw_rd();
+        if status_reg.ucbusy() {
             Err(nb::Error::WouldBlock)
+        } else {
+            Ok(())
         }
     }
 
@@ -92,6 +94,7 @@ impl<USCI:SpiUsci> SpiBus<USCI> {
 }
 
 /// SPI Error conditions
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SpiError {
     /// An Overrun occurred: Unread received data was overwritten with newer data. Contains the latest word (which is still valid).
     Overrun(u8),
@@ -204,7 +207,7 @@ fn calculate_prescaler(clk_freq: u32, baudrate: u32) -> u16 {
     return prescaler.min(u16::MAX as u32) as u16;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// SPI Polarity
 pub enum Polarity {
     /// SCK idles at Vcc
@@ -220,7 +223,7 @@ impl From<Polarity> for bool {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// SPI Phase.
 pub enum Phase {
     /// Data is captured on the first UCLK edge and changed on the following edge
@@ -278,15 +281,15 @@ impl_SpiUsci!(E_USCI_A0,
 
 impl_SpiUsci!(E_USCI_A1, 
     Pin<P4, Pin1, Alternate1<Output>>,
-    Pin<P4, Pin2, Alternate1<Output>>,
-    Pin<P4, Pin3, Alternate1<Output>>);
+    Pin<P4, Pin3, Alternate1<Output>>,
+    Pin<P4, Pin2, Alternate1<Output>>);
 
 impl_SpiUsci!(E_USCI_B0, 
-    Pin<P1, Pin1, Alternate1<Output>>, 
-    Pin<P1, Pin3, Alternate1<Output>>,
-    Pin<P1, Pin2, Alternate1<Output>>);
+    Pin<P1, Pin1, Alternate1<Output>>,
+    Pin<P1, Pin2, Alternate1<Output>>, 
+    Pin<P1, Pin3, Alternate1<Output>>);
 
 impl_SpiUsci!(E_USCI_B1, 
     Pin<P4, Pin5, Alternate1<Output>>,
-    Pin<P4, Pin7, Alternate1<Output>>,
-    Pin<P4, Pin6, Alternate1<Output>>);
+    Pin<P4, Pin6, Alternate1<Output>>,
+    Pin<P4, Pin7, Alternate1<Output>>);

@@ -99,7 +99,7 @@ pub trait EUsciSpi: EUsci {
 pub trait UcaxStatwSpi {
     fn ucfe(&self) -> bool;
     fn ucoe(&self) -> bool;
-    //fn ucbusy(&self) -> bool; // This pin is not exposed in the PAC crate.
+    fn ucbusy(&self) -> bool; // This pin is not exposed in the PAC crate.
 }
 
 macro_rules! eusci_a_impl {
@@ -384,10 +384,10 @@ macro_rules! eusci_a_impl_spi {
             }
 
             //This bit is not exposed in the PAC crate, but also not used by anything.
-            //#[inline(always)]
-            //fn ucbusy(&self) -> bool {
-            //    self.ucbusy().bit()
-            //}
+            #[inline(always)]
+            fn ucbusy(&self) -> bool {
+                self.ucbusy().bit()
+            }
         }
     };
 }
@@ -576,11 +576,10 @@ macro_rules! eusci_b_impl_spi {
                 self.ucoe().bit()
             }
 
-            //This bit is not exposed in the PAC crate
-            //#[inline(always)]
-            //fn ucbusy(&self) -> bool {
-            //    todo!() //self.ucbusy().bit()
-            //}
+            #[inline(always)]
+            fn ucbusy(&self) -> bool {
+                self.ucbusy().bit()
+            }
         }
     };
 }

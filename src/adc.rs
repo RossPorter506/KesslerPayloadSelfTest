@@ -5,7 +5,7 @@
 use embedded_hal::digital::v2::OutputPin;
 use no_std_compat::marker::PhantomData;
 
-use crate::spi::{SckPolarity::IdleHigh, SckPhase::SampleSecondEdge};
+use crate::spi::{Polarity::IdleHigh, Phase::CaptureOnSecondEdge};
 use crate::{spi::PayloadSPI};
 use crate::pcb_mapping::{peripheral_vcc_values::*, pin_name_types::*};
 
@@ -87,7 +87,7 @@ pub const NUM_LEADING_ZEROES: u8 = 2;
 
 impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
-    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleSecondEdge}>) -> u16{
+    pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {CaptureOnSecondEdge}>) -> u16{
         // When SPI packet begins the ADC will track and read channel 1 regardless. 
         // If we want another channel we have to wait until it's finished sending this.
         if wanted_sensor.channel() == ADCChannel::IN0 {
@@ -106,7 +106,7 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     pub fn count_to_voltage(&self, count: u16) -> u16{
         ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16
     }
-    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleSecondEdge}>) -> u16{
+    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {CaptureOnSecondEdge}>) -> u16{
         let count = self.read_count_from(wanted_sensor, spi_bus);
         self.count_to_voltage(count)
     }
