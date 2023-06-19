@@ -33,7 +33,7 @@ use SckPolarity::*;
 pub enum SckPhase {
     /// Read the bus on the first edge, write on the second.
     SampleFirstEdge,
-    /// Read the bus on the second edge, write on the first.
+    /// Write to the bus on the first edge, read on the second.
     SampleSecondEdge,
 }
 use SckPhase::*;
@@ -161,23 +161,6 @@ impl<const POLARITY: SckPolarity, const PHASE: SckPhase> PayloadSPIBitBang<POLAR
         cs_pin.set_high().ok();
         result
     }
-    fn send_before_second_edge(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
-        let mut current_pos: u8 = 0;
-        cs_pin.set_low().ok();
-        while current_pos < len {
-            self.sck.toggle().ok();
-            delay_cycles(80); // duty cycle correction
-            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
-                self.mosi.set_high().ok();
-            }
-            else{
-                self.mosi.set_low().ok();
-            }
-            self.sck.toggle().ok();
-            current_pos += 1;
-        }
-        cs_pin.set_high().ok();
-    }
     fn send_before_first_edge(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
         let mut current_pos: u8 = 0;
         cs_pin.set_low().ok();
@@ -195,38 +178,55 @@ impl<const POLARITY: SckPolarity, const PHASE: SckPhase> PayloadSPIBitBang<POLAR
         }
         cs_pin.set_high().ok();
     }
-    fn send_before_second_receive_after_first(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
-        let mut result: u32 = 0;
+    fn send_after_first_edge(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
         let mut current_pos: u8 = 0;
         cs_pin.set_low().ok();
         while current_pos < len {
             self.sck.toggle().ok();
-            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
-            delay_cycles(80); // duty cycle correction
             if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
+            delay_cycles(40); // duty cycle correction
+            self.sck.toggle().ok();
+            current_pos += 1;
+        }
+        cs_pin.set_high().ok();
+    }
+    fn send_before_first_receive_after_first(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
+        let mut result: u32 = 0;
+        let mut current_pos: u8 = 0;
+        cs_pin.set_low().ok();
+        while current_pos < len {
+            if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
+                self.mosi.set_high().ok();
+            }
+            else{
+                self.mosi.set_low().ok();
+            }
+            self.sck.toggle().ok();
+            result = (result << 1) | (self.miso.is_high().unwrap() as u32);
+            delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             current_pos += 1;
         }
         cs_pin.set_high().ok();
         result
     }
-    fn send_before_first_receive_after_second(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
+    fn send_after_first_receive_after_second(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32{
         let mut result: u32 = 0;
         let mut current_pos: u8 = 0;
         cs_pin.set_low().ok();
         while current_pos < len {
+            self.sck.toggle().ok();
             if  (data & (1_u32 << (len - current_pos - 1_u8))) > 0 {
                 self.mosi.set_high().ok();
             }
             else{
                 self.mosi.set_low().ok();
             }
-            self.sck.toggle().ok();
             delay_cycles(80); // duty cycle correction
             self.sck.toggle().ok();
             result = (result << 1) | (self.miso.is_high().unwrap() as u32);
@@ -257,14 +257,14 @@ impl<const CURRENT_POL: SckPolarity, const CURRENT_PHA: SckPhase> PayloadSPIBitB
 }
 // Actual trait implementations
 impl<const POLARITY: SckPolarity> PayloadSPI<POLARITY, {SampleSecondEdge}> for PayloadSPIBitBang<POLARITY, {SampleSecondEdge}> {
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_before_second_edge(len, data, cs_pin) }
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_after_first_edge(len, cs_pin) }
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_before_second_receive_after_first(len, data, cs_pin) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_after_first_edge(len, data, cs_pin) }
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_after_second_edge(len, cs_pin) }
+    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_after_first_receive_after_second(len, data, cs_pin) }
 }
 impl<const POLARITY: SckPolarity> PayloadSPI<POLARITY, {SampleFirstEdge}> for PayloadSPIBitBang<POLARITY, {SampleFirstEdge}> {
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_before_first_edge(len, data, cs_pin) }
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_after_second_edge(len, cs_pin) }
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_before_first_receive_after_second(len, data, cs_pin) }
+    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) { self.send_before_first_edge(len, data, cs_pin) } // technically this should be 'send after second edge' to fit the pattern, but we need to have data on the bus before the first rising edge.
+    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { self.receive_after_first_edge(len, cs_pin) }
+    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { self.send_before_first_receive_after_first(len, data, cs_pin) }
 }
 
 /// A wrapper class that automates changing the typestate of the bus. Useful for intermediate functions that don't use the bus themselves, but call functions that do.
