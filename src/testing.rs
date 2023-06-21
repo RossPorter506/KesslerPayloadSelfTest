@@ -63,8 +63,9 @@ impl AutomatedFunctionalTests{
             spi_bus: &mut impl PayloadSPI<{IdleHigh}, {CaptureOnFirstEdge}>,
             wanted_channel: ADCChannel) -> bool {
         let payload = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES); // see adc.rs read_count_from
-        let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, payload, &mut adc.cs_pin);
-        let zeroes = result & 0xF000_F000;
+        let mut buf = payload.to_be_bytes();
+        spi_bus.send_receive(buf.as_mut_slice(), &mut adc.cs_pin);
+        let zeroes = u32::from_be_bytes(buf) & 0xF000_F000;
 
         zeroes == 0
     }

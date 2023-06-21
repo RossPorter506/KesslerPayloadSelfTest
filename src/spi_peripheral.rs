@@ -19,12 +19,12 @@ pub trait OBCSPI{
     fn send_receive(&mut self, len: u8, data: u32) -> u32;
 }
 pub trait PayloadSPI<const POLARITY: Polarity, const PHASE: Phase>{
-    /// Send a packet up to 32 bits long.
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin);
-    /// Receive a packet up to 32 bits long.
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32;
-    /// Send a packet up to 32 bits long while receiving another 32 at the same time (duplex).
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32;
+    /// Send a series of packets.
+    fn send(&mut self, data: &mut [u8], cs_pin: &mut impl OutputPin);
+    /// Receive a number of packets, sending all-zero packets.
+    fn receive(&mut self, buffer: &mut [u8], cs_pin: &mut impl OutputPin);
+    /// Send a number of packets while receiving at the same time (duplex).
+    fn send_receive(&mut self, data: &mut [u8], cs_pin: &mut impl OutputPin);
 }
 
 /// Payload SPI implementation that uses bit banging.
@@ -50,36 +50,18 @@ impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPIPeripheral<POLARITY
 
 // Actual trait implementations
 impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPI<POLARITY, PHASE> for PayloadSPIPeripheral<POLARITY, PHASE> {
-    fn send(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) {
-        self.send_receive(len, data, cs_pin);
+    fn send(&mut self, data: &mut [u8], cs_pin: &mut impl OutputPin) {
+        self.send_receive(data, cs_pin);
     }
-    fn receive(&mut self, len: u8, cs_pin: &mut impl OutputPin) -> u32  { 
-        self.send_receive(len, 0, cs_pin) 
+    fn receive(&mut self, buf: &mut [u8], cs_pin: &mut impl OutputPin) {
+        buf.fill(0);
+        self.send_receive(buf, cs_pin);
     }
-    fn send_receive(&mut self, len: u8, data: u32, cs_pin: &mut impl OutputPin) -> u32 { 
-        match len {
-            1..=32 => (),
-            _ => return 0,
-        };
-        let mut data_as_arr = data.to_be_bytes();
-        let (packets, _) = data_as_arr.as_mut_slice().split_at_mut(len as usize / 8);
-
+    fn send_receive(&mut self, data: &mut [u8], cs_pin: &mut impl OutputPin) { 
         cs_pin.set_low().ok();
-        let read = match self.bus.transfer(packets) {
-            Ok(v) => v,
-            Err(SpiError::Framing) => &[0], // TODO
-            Err(SpiError::Overrun(data)) => &[0], // TODO
-        }; 
+        self.bus.transfer(data).ok(); // we should probably check for overruns here, but eh.
         block!(self.bus.flush()).ok();
         cs_pin.set_high().ok();
-        let arr: [u8;4] = packets.try_into().unwrap_or([0;4]);
-        match len {
-            1..=8   =>  arr[0] as u32,
-            9..=16  => (arr[0] as u32) << 8  | (arr[1] as u32),
-            17..=24 => (arr[0] as u32) << 16 | (arr[1] as u32) << 8  | (arr[2] as u32),
-            25..=32 => (arr[0] as u32) << 24 | (arr[1] as u32) << 16 | (arr[2] as u32) << 8 | (arr[3] as u32),
-            _ => 0xDEADBEEF,
-        }
      }
 }
 
