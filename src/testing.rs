@@ -493,13 +493,24 @@ impl ManualFunctionalTests{
         [SensorResult {name: "Endmass switch 1", result: (is_depressed_arr[0] && is_released_arr[0])},
          SensorResult {name: "Endmass switch 2", result: (is_depressed_arr[1] && is_released_arr[1])}]
     }
-    /*
+
     // Dependencies: pinpuller
     pub fn pinpuller_functional_test() -> [SensorResult; 4] {
         // Enable each of the four redundant lines.
+        let mut pin_arr: [&mut dyn OutputPin<Error=void::Void>; 4] = [  
+            &mut pins.burn_wire_1, 
+            &mut pins.burn_wire_1_backup, 
+            &mut pins.burn_wire_2, 
+            &mut pins.burn_wire_2_backup];
         // Manually check resistance(?) across pinpuller pins
-        todo!();
+        for (n, pin) in pin_arr.iter_mut().enumerate(){
+            pin.set_high().ok();
+            read_num(serial_writer, serial_reader);
+            pin.set_low().ok();
+            delay_cycles(1000);
+        }
     }
+    /*
     // Dependencies: LMS power switches
     pub fn lms_power_switch_functional_test() -> [SensorResult; 2] {
         // Enable LMS LED EN
