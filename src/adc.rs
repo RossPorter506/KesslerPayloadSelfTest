@@ -6,7 +6,7 @@ use embedded_hal::digital::v2::OutputPin;
 use no_std_compat::marker::PhantomData;
 
 use crate::spi::{SckPolarity::IdleHigh, SckPhase::SampleSecondEdge};
-use crate::{spi::PayloadSPI};
+use crate::{spi::PayloadSPI, PayloadSPIController};
 use crate::pcb_mapping::{peripheral_vcc_values::*, pin_name_types::*};
 
 #[derive(PartialEq)]
@@ -106,8 +106,8 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
     pub fn count_to_voltage(&self, count: u16) -> u16{
         ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16
     }
-    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleSecondEdge}>) -> u16{
-        let count = self.read_count_from(wanted_sensor, spi_bus);
+    pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut PayloadSPIController) -> u16{
+        let count = self.read_count_from(wanted_sensor, spi_bus.borrow());
         self.count_to_voltage(count)
     }
 }

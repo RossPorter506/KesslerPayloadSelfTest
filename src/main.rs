@@ -88,7 +88,7 @@ fn main() -> ! {
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, payload_spi_controller.borrow());
+        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
         let mut payload = payload.into_enabled_heater();
         
         AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);

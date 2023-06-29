@@ -10,7 +10,7 @@ const DIGIPOT_NUM_ADDRESS_BITS: u8 = 1;
 const DIGIPOT_NUM_DATA_BITS: u8 = 8;
 const DIGIPOT_NUM_BITS_IN_PACKET: u8 = DIGIPOT_NUM_ADDRESS_BITS + DIGIPOT_NUM_DATA_BITS;
 
-use crate::{spi::{PayloadSPI, SckPolarity::IdleLow, SckPhase::SampleFirstEdge}, pcb_mapping::pin_name_types::DigipotCSPin};
+use crate::{spi::{PayloadSPI, PayloadSPIController, SckPolarity::IdleLow, SckPhase::SampleFirstEdge}, pcb_mapping::pin_name_types::DigipotCSPin};
 use crate::payload::enforce_bounds;
 
 pub enum DigipotChannel{
@@ -25,9 +25,9 @@ impl Digipot {
     pub fn new(cs_pin: DigipotCSPin) -> Digipot {
         Digipot {cs_pin}
     }
-    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>){
+    pub fn set_channel_to_resistance(&mut self, channel: DigipotChannel, wanted_resistance: u32, spi_bus: &mut PayloadSPIController){
         let count = self.resistance_to_count(wanted_resistance);
-        self.set_channel_to_count(channel, count, spi_bus);
+        self.set_channel_to_count(channel, count, spi_bus.borrow());
     }
     pub fn set_channel_to_count(&mut self, channel: DigipotChannel, count: u8, spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>){
         let payload: u16 = ((channel as u16) << DIGIPOT_NUM_DATA_BITS) | (count as u16);

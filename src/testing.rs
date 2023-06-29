@@ -45,7 +45,7 @@ impl AutomatedFunctionalTests{
             uwriteln!(serial, "{}", adc_test_fn(payload, spi_bus.borrow())).ok();
         }
 
-        for pinpuller_lane in Self::pinpuller_functional_test(pinpuller_pins, payload, spi_bus.borrow()).iter() {
+        for pinpuller_lane in Self::pinpuller_functional_test(pinpuller_pins, payload, spi_bus).iter() {
             uwriteln!(serial, "{}", pinpuller_lane).ok();
         }
 
@@ -119,7 +119,7 @@ impl AutomatedFunctionalTests{
     pub fn pinpuller_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(   
             pins: &'a mut PinpullerActivationPins, 
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>,
-            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> [SensorResult<'a>; 4] {
+            spi_bus: &'a mut PayloadSPIController) -> [SensorResult<'a>; 4] {
         const ON_MILLIAMP_THRESHOLD: u16 = 1000; // TODO: Figure out threshhold
         let mut results = [false; 4];
         
@@ -155,21 +155,21 @@ impl AutomatedFunctionalTests{
             debug_writer: &mut SerialWriter<USCI>) -> SensorResult<'a> {
 
         // Set heater to min
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
+        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus); // set voltage
         delay_cycles(100_000);
         // Read voltage
-        let min_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
+        let min_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
         dbg_uwriteln!(debug_writer, "Min voltage set to {}. Read as {}, expected at most {}", HEATER_MIN_VOLTAGE_MILLIVOLTS, min_voltage_mv, (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10);
         
         // Set heater to max
-        payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
+        payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, spi_bus); // set voltage
         delay_cycles(100_000);
         // Read voltage
-        let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
+        let max_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
         dbg_uwriteln!(debug_writer, "Max voltage set to {}. Read as {}, expected at least {}", HEATER_MAX_VOLTAGE_MILLIVOLTS, max_voltage_mv, (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10);
 
         // Set heater back to min and give time to settle
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus.borrow()); // set voltage
+        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, spi_bus); // set voltage
         delay_cycles(1_000_000);
 
         SensorResult{name: "Heater", result: ((min_voltage_mv as u32) < (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) * 11/10) 
@@ -314,9 +314,9 @@ impl AutomatedPerformanceTests{
     //  I tried with regular function pointers, but Rust didn't enjoy the const generic subtypes.
     fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
         set_switch_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, SwitchState), 
-        measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
-        measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIBitBang<{IdleHigh}, {SampleFirstEdge}>) -> i32,
-        set_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, u32, &mut PayloadSPIBitBang<{IdleLow}, {SampleFirstEdge}>),
+        measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
+        measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
+        set_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, u32, &mut PayloadSPIController),
         supply_min: u32,
         supply_max: u32,
         payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
@@ -336,13 +336,13 @@ impl AutomatedPerformanceTests{
         dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);
 
         // Set cathode voltage
-        set_voltage_fn(payload, set_voltage_mv, spi_bus.borrow());
+        set_voltage_fn(payload, set_voltage_mv, spi_bus);
 
         delay_cycles(100_000); //settling time
         
         // Read voltage, current
-        let measured_voltage_mv = measure_voltage_fn(payload, spi_bus.borrow());
-        let measured_current_ua = measure_current_fn(payload, spi_bus.borrow());
+        let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
+        let measured_current_ua = measure_current_fn(payload, spi_bus);
         dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
         dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
 
@@ -362,7 +362,7 @@ impl AutomatedPerformanceTests{
     }
 
     // Set back to zero
-    set_voltage_fn(payload, supply_min, spi_bus.borrow());
+    set_voltage_fn(payload, supply_min, spi_bus);
 
     set_switch_fn(payload, SwitchState::Disconnected);
 
@@ -389,15 +389,15 @@ impl AutomatedPerformanceTests{
             let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
 
             // Set cathode voltage
-            payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
+            payload.set_heater_voltage(output_voltage_mv, spi_bus);
 
             dbg_uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
             
             // Read voltage, current
-            let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus.borrow());
+            let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
             dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
-            let heater_current_ma = payload.get_heater_current_milliamps(spi_bus.borrow());
+            let heater_current_ma = payload.get_heater_current_milliamps(spi_bus);
             dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
             // Calculate expected voltage and current
@@ -435,7 +435,7 @@ impl AutomatedPerformanceTests{
         //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
 
         accuracy = in_place_average(accuracy, 
-                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, 0),
+                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 0),
                                     0); 
 
         // For each pin, activate the pinpuller through that channel and measure the current
@@ -446,7 +446,7 @@ impl AutomatedPerformanceTests{
         for (n, pin) in pin_list.iter_mut().enumerate() {
             pin.set_high().ok();
             accuracy = in_place_average(accuracy, 
-                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus.borrow()) as i32, expected_on_current as i32), 
+                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, expected_on_current as i32), 
                                         (n+1) as u16);
             pin.set_low().ok();
             delay_cycles(1000);
@@ -527,7 +527,7 @@ fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState,
         payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>,
         serial_writer: &'a mut SerialWriter<USCI>,
         serial_reader: &'a mut Rx<USCI>, 
-        spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> [PerformanceResult<'static>; 8]{
+        spi_bus: &'a mut PayloadSPIController) -> [PerformanceResult<'static>; 8]{
     
     const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
         (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
@@ -590,7 +590,7 @@ impl ManualPerformanceTests{
             payload: &'a mut PayloadController<{PayloadOff}, DONTCARE>, // Minimise heat generation
             serial_writer: &'a mut SerialWriter<USCI>,
             serial_reader: &'a mut Rx<USCI>, 
-            spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> [PerformanceResult<'a>; 8]{
+            spi_bus: &'a mut PayloadSPIController) -> [PerformanceResult<'a>; 8]{
 
 
         let mut room_temp_k: u16 = Self::query_room_temp(serial_writer, serial_reader);
@@ -684,7 +684,7 @@ impl ManualPerformanceTests{
     /// Dependencies: DAC
     pub fn test_cathode_offset_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
-        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        spi_bus: &'a mut PayloadSPIController,
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
     const NUM_MEASUREMENTS: usize = 10;
@@ -725,7 +725,7 @@ impl ManualPerformanceTests{
 
     pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
-        spi_bus: &'a mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>,
+        spi_bus: &'a mut PayloadSPIController,
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
@@ -775,7 +775,7 @@ impl ManualPerformanceTests{
             let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
 
             // Set cathode voltage
-            payload.set_heater_voltage(output_voltage_mv, spi_bus.borrow());
+            payload.set_heater_voltage(output_voltage_mv, spi_bus);
 
             uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
             delay_cycles(100_000); //settling time
