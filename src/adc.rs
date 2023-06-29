@@ -80,7 +80,10 @@ impl MiscADC{
 const AQUIRE_CYCLES: u8 = 4;
 const TRANSMIT_CYCLES: u8 = 12;
 pub const NUM_CYCLES_FOR_ONE_READING: u8 = AQUIRE_CYCLES + TRANSMIT_CYCLES;
+pub const NUM_PACKETS_FOR_ONE_READING: u8 = NUM_CYCLES_FOR_ONE_READING / 8;
+
 pub const NUM_CYCLES_FOR_TWO_READINGS: u8 = NUM_CYCLES_FOR_ONE_READING * 2;
+pub const NUM_PACKETS_FOR_TWO_READINGS: u8 = NUM_CYCLES_FOR_TWO_READINGS / 8;
 
 pub const NUM_ADDRESS_BITS: u8 = 3;
 pub const NUM_LEADING_ZEROES: u8 = 2;
@@ -91,16 +94,19 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
         // When SPI packet begins the ADC will track and read channel 1 regardless. 
         // If we want another channel we have to wait until it's finished sending this.
         if wanted_sensor.channel() == ADCChannel::IN0 {
-            return spi_bus.receive(NUM_CYCLES_FOR_ONE_READING, &mut self.cs_pin) as u16;
+            let mut buf = [0u8; (NUM_PACKETS_FOR_ONE_READING) as usize];
+            spi_bus.receive(buf.as_mut_slice(), &mut self.cs_pin);
+            return u16::from_be_bytes(buf);
         }
         else{
             // We need to send the channel we want to read two edges after the start, and it's three bits long.
             // SPI will always send the LSB during the last edge, so we need to shift it until there are only two zeroes in front, i.e. 00XXX0000...
             // 1 << 31 would put the one-bit-long payload in the MSB, so shift by two fewer for a three-bit payload, and two fewer again to have two zeroes out front
-            let data_packet = (wanted_sensor.channel() as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES);
+            let payload = (wanted_sensor.channel() as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES);
+            let mut buf = payload.to_be_bytes();
 
-            let result = spi_bus.send_receive(NUM_CYCLES_FOR_TWO_READINGS, data_packet, &mut self.cs_pin);
-            return (result & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
+            spi_bus.send_receive(buf.as_mut_slice(), &mut self.cs_pin);
+            return (u32::from_be_bytes(buf) & 0xFFF) as u16; // We only care about the last reading, which is transmitted in the last 12 edges.
         }
     }
     pub fn count_to_voltage(&self, count: u16) -> u16{

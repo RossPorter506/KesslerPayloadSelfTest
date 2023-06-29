@@ -53,7 +53,8 @@ impl DAC{
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
                         spi_bus: &mut impl PayloadSPI<{IdleLow}, {CaptureOnFirstEdge}>) {
         let payload: u32 = ((command as u32) << COMMAND_OFFSET) | ((channel as u32) << ADDRESS_OFFSET) | ((value as u32) << DATA_OFFSET);
-        spi_bus.send(NUM_BITS_IN_PACKET, payload, &mut self.cs_pin);
+        
+        spi_bus.send(payload.to_be_bytes().as_mut_slice(), &mut self.cs_pin);
     }
     pub fn voltage_to_count(mut target_millivolts: u16) -> u16{
         if target_millivolts > DAC_VCC_VOLTAGE_MILLIVOLTS {

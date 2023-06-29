@@ -4,6 +4,7 @@
 //! After configuring the E_USCI peripheral, the SPI bus can be obtained by
 //! converting the appropriate GPIO pins to the alternate function corresponding to SPI.
 
+use core::marker::ConstParamTy;
 use embedded_hal::spi::{FullDuplex};
 use msp430fr2355 as pac;
 use crate::clock::{Aclk, Smclk, Clock};
@@ -207,7 +208,7 @@ fn calculate_prescaler(clk_freq: u32, baudrate: u32) -> u16 {
     return prescaler.min(u16::MAX as u32) as u16;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ConstParamTy)]
 /// SPI Polarity
 pub enum Polarity {
     /// SCK idles at Vcc
@@ -223,7 +224,7 @@ impl From<Polarity> for bool {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ConstParamTy)]
 /// SPI Phase.
 pub enum Phase {
     /// Data is captured on the first UCLK edge and changed on the following edge
