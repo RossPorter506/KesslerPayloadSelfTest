@@ -86,14 +86,6 @@ pub trait EUsciSpi: EUsci {
     // only call while in reset state
     fn clear_mctlw(&self);
 
-    // only call while in reset state. 
-    // Used to reconfigure an already configued peripheral. Very similar to above, but 
-    // dealing with ucssel is kind of a hassle, and if you want to change the clock you're probably 
-    // changing prescaler too, so you might as well just reconfigure the whole bus at that point.
-    fn modify_ctl0_settings(&mut self, 
-        ph: bool, pol: bool, 
-        ord: bool, cnt: bool);
-
     fn statw_rd(&self) -> Self::Statw;
 }
 pub trait UcaxStatwSpi {
@@ -340,20 +332,6 @@ macro_rules! eusci_a_impl_spi {
                 });
             }
 
-            fn modify_ctl0_settings(&mut self, ph: bool, pol: bool, 
-                ord: bool, cnt: bool) {
-                self.$ucaxctlw0().modify(|_, w| {
-                    w.ucckph()
-                        .bit(ph)
-                        .ucckpl()
-                        .bit(pol)
-                        .ucmsb()
-                        .bit(ord)
-                        .uc7bit()
-                        .bit(cnt)
-                });
-            }
-
             #[inline(always)]
             fn clear_mctlw(&self) {
                 self.$ucaxmctlw.write(|w| unsafe {
@@ -537,20 +515,6 @@ macro_rules! eusci_b_impl_spi {
                         .bit(reg.ucmst)
                         .ucssel()
                         .bits(reg.ucssel as u8)
-                });
-            }
-
-            fn modify_ctl0_settings(&mut self, ph: bool, pol: bool, 
-                ord: bool, cnt: bool) {
-                self.$ucbxctlw0().modify(|_, w| {
-                    w.ucckph()
-                        .bit(ph)
-                        .ucckpl()
-                        .bit(pol)
-                        .ucmsb()
-                        .bit(ord)
-                        .uc7bit()
-                        .bit(cnt)
                 });
             }
 

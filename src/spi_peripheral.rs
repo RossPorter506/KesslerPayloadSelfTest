@@ -5,7 +5,7 @@ use crate::pcb_mapping::{OBCSPIPins, PayloadSPIPins, pin_name_types::{PayloadMOS
 use embedded_hal::{digital::v2::{OutputPin, ToggleableOutputPin, InputPin}, prelude::_embedded_hal_blocking_spi_Transfer};
 use msp430fr2355::E_USCI_B1;
 use msp430fr2x5x_hal::{gpio::*, spi::{BitOrder, BitCount, SpiBus}};
-pub use msp430fr2x5x_hal::spi::{Polarity, Phase, SpiError}; // Re-export from HAL
+pub use msp430fr2x5x_hal::spi::{Polarity, Phase, SpiError, SpiClock}; // Re-export from HAL
 use nb::block;
 use crate::delay_cycles;
 
@@ -43,7 +43,7 @@ impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPIPeripheral<POLARITY
     }
     /// Consumes the old bus to produces a new one of a different type. Output type is usually inferred automatically.
     pub fn into<const NEW_POL: Polarity, const NEW_PHA: Phase>(mut self) -> PayloadSPIPeripheral<NEW_POL, NEW_PHA>{
-        self.bus.reconfigure(NEW_POL, NEW_PHA, BitOrder::MsbFirst, BitCount::EightBits);
+        self.bus.reconfigure(NEW_POL, NEW_PHA, BitOrder::MsbFirst, BitCount::EightBits, SpiClock::Smclk);
         PayloadSPIPeripheral::<NEW_POL, NEW_PHA>{bus: self.bus}
     }
 }
@@ -60,7 +60,7 @@ impl<const POLARITY: Polarity, const PHASE: Phase> PayloadSPI<POLARITY, PHASE> f
     fn send_receive(&mut self, data: &mut [u8], cs_pin: &mut impl OutputPin) { 
         cs_pin.set_low().ok();
         self.bus.transfer(data).ok(); // we should probably check for overruns here, but eh.
-        block!(self.bus.flush()).ok();
+        //block!(self.bus.flush()).ok();
         cs_pin.set_high().ok();
      }
 }
@@ -96,7 +96,7 @@ impl PayloadSPIController {
         // b) the methods called on the struct. 
 
         // We can deal with a) easily enough.
-        self.spi_bus.bus.reconfigure(POLARITY, PHASE, BitOrder::MsbFirst, BitCount::EightBits);
+        self.spi_bus.bus.reconfigure(POLARITY, PHASE, BitOrder::MsbFirst, BitCount::EightBits, SpiClock::Smclk);
 
         // Now we only need to trick Rust into calling the methods of PayloadSPIPeripheral<POLARITY, PHASE> instead of the methods associated with our PayloadSPIBitBang<{IdleHigh}, {DeviceReadsFirstEdge}> we have stored.        
         // Ask Rust to treat our PayloadSPIPeripheral<{IdleHigh}, {DeviceReadsFirstEdge}> as if it were PayloadSPIPeripheral<POLARITY, PHASE>.

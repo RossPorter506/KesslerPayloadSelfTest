@@ -12,6 +12,7 @@ use crate::gpio::{Alternate1, Pin, Pin1, Pin2, Pin3, Pin5, Pin6, Pin7, P1, P4, O
 use crate::hw_traits::eusci::{EUsciSpi, UcxCtl0Spi, UcsselSpi, UcaxStatwSpi};
 //Re-export so users can do spi::BitOrder, etc.
 pub use crate::eusci_utils::{BitOrder, BitCount, Loopback};
+pub use crate::hw_traits::eusci::UcsselSpi as SpiClock;
 
 /// Spi bus object. Use to send or receive data.
 /// 
@@ -64,15 +65,14 @@ impl<USCI:SpiUsci> SpiBus<USCI> {
     pub fn reconfigure(&mut self,
         polarity: Polarity, phase: Phase, 
         order: BitOrder, count: BitCount,
+        clock: UcsselSpi,
         ) {
         
         self.usci.ctl0_reset();
-        self.usci.modify_ctl0_settings(
-            phase.into(),
-            polarity.into(),
-            order.to_bool(),
-            count.to_bool(),
-        );
+        self.usci.ctl0_settings(UcxCtl0Spi {
+            ucckph: phase.into(), ucckpl: polarity.into(), 
+            uc7bit: count.to_bool(), ucmsb: order.to_bool(), 
+            ucmst: true, ucssel: clock });
     }
 
     /// Check if transmission has completed. Check this before de-asserting chip select.

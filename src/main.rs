@@ -5,10 +5,10 @@
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
 
-use embedded_hal::{digital::v2::*, spi::FullDuplex};
+use embedded_hal::{digital::v2::*, spi::FullDuplex, prelude::_embedded_hal_blocking_spi_Transfer};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM, E_USCI_B1};
-use msp430fr2x5x_hal::{spi::SpiConfig, clock::Smclk, hw_traits::eusci::EUsciSpi};
+use msp430fr2x5x_hal::{spi::SpiConfig, clock::Smclk, hw_traits::eusci::{EUsciSpi, UcsselSpi}};
 #[allow(unused_imports)]
 use msp430fr2x5x_hal::{hw_traits::eusci::EUsci, gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use nb::block;
@@ -68,15 +68,36 @@ fn main() -> ! {
         for _ in 0..2 {msp430::asm::nop();} // give time to freeze clocks...?
 
         led_pins.yellow_led.toggle().ok();
-        
+        led_pins.red_led.set_high().ok();
+
         // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
         // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
         let mut payload_spi_controller = setup_payload_spi(payload_spi_pins, periph.E_USCI_B1, &smclk);
+        delay_cycles(100_000);
+
+        payload_spi_controller.spi_bus.send(&mut [0xAA, 0xAA, 0xAA, 0xAA], &mut led_pins.red_led);
+        delay_cycles(100_000);
+
+        payload_spi_controller.spi_bus.bus.reconfigure(Polarity::IdleLow, Phase::CaptureOnFirstEdge,
+            BitOrder::MsbFirst, BitCount::EightBits, UcsselSpi::Smclk);
+        delay_cycles(100_000);
+
+        payload_spi_controller.spi_bus.send(&mut [0xAA, 0xAA, 0xAA, 0xAA], &mut led_pins.red_led);
+        delay_cycles(100_000);
+
+        payload_spi_controller.spi_bus.bus.reconfigure(Polarity::IdleHigh, Phase::CaptureOnFirstEdge,
+            BitOrder::MsbFirst, BitCount::EightBits, UcsselSpi::Smclk);
+        delay_cycles(100_000);
+
+        payload_spi_controller.spi_bus.send(&mut [0xAA, 0xAA, 0xAA, 0xAA], &mut led_pins.red_led);
+        delay_cycles(100_000);
+
+        
 
         // Collate peripherals into a single struct
-        let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
+        //let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller, &mut led_pins.red_led);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        /*let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
         
         led_pins.yellow_led.toggle().ok();
 
@@ -103,7 +124,7 @@ fn main() -> ! {
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
-        let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        let mut payload = payload.into_disabled_heater().into_disabled_payload();*/
         idle_loop(&mut led_pins); 
     }
     else {#[allow(clippy::empty_loop)] loop{}}
@@ -141,7 +162,7 @@ fn setup_payload_spi(pins: PayloadSPIPins, usci: E_USCI_B1, smclk: &Smclk) -> Pa
     // When using peripheral:
     let bus = SpiConfig::new(
         usci,
-        Polarity::IdleHigh, Phase::CaptureOnFirstEdge,
+        Polarity::IdleHigh, Phase::CaptureOnSecondEdge,
         BitOrder::MsbFirst, BitCount::EightBits,
         Loopback::NoLoop, 100_000)
         .use_smclk(smclk)
@@ -152,10 +173,13 @@ fn setup_payload_spi(pins: PayloadSPIPins, usci: E_USCI_B1, smclk: &Smclk) -> Pa
     PayloadSPIController::new(bus)
 }
 
-fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut PayloadSPIController) -> PayloadPeripherals{
+fn collect_payload_peripherals(mut cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut PayloadSPIController, pin: &mut impl OutputPin) -> PayloadPeripherals{
     // Note that the peripherals gain ownership of their associated pins
     let digipot = Digipot::new(cs_pins.digipot);
+    let payload = 7u32 << 20;
+    payload_spi_bus.spi_bus.send(payload.to_be_bytes().as_mut_slice(), &mut cs_pins.dac);
     let dac = DAC::new(cs_pins.dac, payload_spi_bus.borrow());
+    payload_spi_bus.spi_bus.send(payload.to_be_bytes().as_mut_slice(),  pin);
     let tether_adc = TetherADC::new(cs_pins.tether_adc);
     let temperature_adc = TemperatureADC::new(cs_pins.temperature_adc);
     let misc_adc = MiscADC::new(cs_pins.misc_adc);
