@@ -792,6 +792,57 @@ impl ManualPerformanceTests{
         let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         voltage_result
     }
+    
+    pub fn test_heater_current<'a, USCI: SerialUsci>(
+        payload: &'a mut PayloadController<{ PayloadOn }, { HeaterOn }>,
+        spi_bus: &'a mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI>,
+    ) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 10;
+        let probe_resistance: FixedI64::<32> = FixedI64::<32>::from(90) / 1000;   // 90 mohms 
+        let cathode_resistance= FixedI64::<32>::from(10);           // 10 ohms
+        let shunt_resistance = FixedI64::<32>::from(10) / 1000;     // 10 mohms
+        let circuit_resistance = cathode_resistance + probe_resistance + shunt_resistance;
+    
+        let power_limited_max_current_ma = FixedI64::<32>::from(31466) / 100; //314.66mA = 1000 * sqrt(heater_max_power / circuit_resistance);
+        let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
+    
+        for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u16 = 
+                (((100 - output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32)
+                + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
+    
+            // Set heater voltage
+            payload.set_heater_voltage(output_voltage_mv, spi_bus);
+            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
+            delay_cycles(100_000); //settling time
+    
+            // Calculate expected voltage and current
+            let expected_voltage_mv: u16 = output_voltage_mv; // assume zero error between target voltage and actual voltage
+            let expected_current_ma: i16 = (FixedI64::<32>::from(expected_voltage_mv) / circuit_resistance)
+                .min(power_limited_max_current_ma).to_num();
+            dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
+    
+            //Manually measure the current
+            uwrite!(debug_writer,"Measure current across cathode substitute and input (in mA): ").ok();
+            let measured_current_ma = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
+    
+            //Determine accuracy
+            let current_rpd = calculate_rpd(measured_current_ma, expected_current_ma as i32);
+            uwriteln!(debug_writer,"Calculated current millirpd: {}", (current_rpd * 1000).to_num::<i32>()).ok();
+            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+        }
+    
+        let current_result = calculate_performance_result(
+            "Heater current",
+            current_accuracy,
+            FixedI64::<32>::from(5) / 100,
+            FixedI64::<32>::from(20) / 100,
+        );
+        current_result
+    }
 }
 
 /// Functional test result.

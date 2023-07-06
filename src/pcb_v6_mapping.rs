@@ -131,7 +131,7 @@ pub mod sensor_equations {
         ((v_adc_millivolts as i32)*-84714 / 1000) + 406089
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
-        (((v_adc_millivolts as i32 * 2*957)/1000)-66) as i16
+        (((v_adc_millivolts * 9) / 50) - 3) as i16
     }
     pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
         //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
