@@ -70,6 +70,7 @@ fn main() -> ! {
             .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
             .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
             .freeze(&mut fram);
+        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.
 
         led_pins.yellow_led.toggle().ok();
 

@@ -377,11 +377,11 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController, 
             debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
-        let heater_resistance = FixedI64::<32>::from(10) + FixedI64::<32>::from(1) / 100; // heater resistance + shunt resistor
+        let circuit_resistance = FixedI64::<32>::from(10) + FixedI64::<32>::from(1) / 100; // heater resistance + shunt resistor
         let heater_max_power = FixedI64::<32>::from(1); // TODO: Verify?
-        let max_on_current_ma = FixedI64::<32>::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / heater_resistance; 
+        let max_on_current_ma = FixedI64::<32>::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / circuit_resistance; 
 
-        let power_limited_max_current_ma: u32 = 316;//1000 * sqrt((heater_max_power / heater_resistance).to_num());
+        let power_limited_max_current_ma = FixedI64::<32>::from(31466) / 100; //314.66mA = 1000 * sqrt(heater_max_power / circuit_resistance);
         let mut voltage_accuracy: FixedI64<32> = FixedI64::ZERO;
         let mut current_accuracy: FixedI64<32> = FixedI64::ZERO;
 
@@ -401,14 +401,15 @@ impl AutomatedPerformanceTests{
             dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
             // Calculate expected voltage and current
-            let expected_voltage: u16 = output_voltage_mv;
-            let expected_current: i16 = power_limited_max_current_ma.min(max_on_current_ma.to_num::<u32>() * output_percentage / 100) as i16;
-            dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current);
+            let expected_voltage_mv: u16 = output_voltage_mv;
+            let expected_current_ma: i16 = (FixedI64::<32>::from(expected_voltage_mv) / circuit_resistance)
+                .min(power_limited_max_current_ma).to_num();
+            dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
 
-            let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage as i32);
+            let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage_mv as i32);
             dbg_uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
-            current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current as i32), i as u16);
+            current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current_ma as i32), i as u16);
             dbg_uwriteln!(debug_writer, "");
         }
 
@@ -645,10 +646,10 @@ impl ManualPerformanceTests{
             
             // Read cathode voltage, current
             uwrite!(debug_writer, "Measure voltage and enter in mV: ").ok();
-            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            let measured_voltage_mv = read_num(debug_writer, serial_reader);
             uwriteln!(debug_writer, "").ok();
 
-            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
             uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
 
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
@@ -704,10 +705,10 @@ impl ManualPerformanceTests{
         
         // Read cathode voltage, current
         uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-        let actual_voltage_mv = read_num(debug_writer, serial_reader);
+        let measured_voltage_mv = read_num(debug_writer, serial_reader);
         uwriteln!(debug_writer, "").ok();
 
-        let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+        let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
         uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
 
         voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
@@ -745,10 +746,10 @@ impl ManualPerformanceTests{
             
             // Read tether bias voltage, current
             uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            let measured_voltage_mv = read_num(debug_writer, serial_reader);
             uwriteln!(debug_writer, "").ok();
 
-            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
             uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
 
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
@@ -781,10 +782,10 @@ impl ManualPerformanceTests{
             delay_cycles(100_000); //settling time
 
             uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-            let actual_voltage_mv = read_num(debug_writer, serial_reader);
+            let measured_voltage_mv = read_num(debug_writer, serial_reader);
             uwriteln!(debug_writer, "").ok();
 
-            let voltage_rpd = calculate_rpd(actual_voltage_mv, output_voltage_mv as i32);
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
             uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
         }
