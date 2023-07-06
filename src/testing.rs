@@ -510,7 +510,10 @@ impl ManualFunctionalTests{
             (&mut pins.burn_wire_3,      "Burn Wire 3 only active"),
             (&mut pins.burn_wire_4,      "Burn Wire 4 only active"),
         ];
-        let result: [PerformanceResult; 4];
+        let result: [PerformanceResult; 4] = [PerformanceResult::new("Burn Wire 1", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 2", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 3", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 4", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO)];
         // Manually check resistance(?) across pinpuller pins
         for (n, (pin, name)) in pin_arr.iter_mut().enumerate(){
             pin.set_high().ok();
