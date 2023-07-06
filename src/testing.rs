@@ -495,17 +495,21 @@ impl ManualFunctionalTests{
     }
 
     // Dependencies: pinpuller
-    pub fn pinpuller_functional_test() -> [SensorResult; 4] {
+    pub fn pinpuller_functional_test <'a, USCI: SerialUsci> (pins: &mut PinpullerActivationPins, serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> [PerformanceResult<'a>; 4] {
         // Enable each of the four redundant lines.
-        let mut pin_arr: [&mut dyn OutputPin<Error=void::Void>; 4] = [  
-            &mut pins.burn_wire_1, 
-            &mut pins.burn_wire_1_backup, 
-            &mut pins.burn_wire_2, 
-            &mut pins.burn_wire_2_backup];
+        let pin_arr: [(&mut dyn OutputPin<Error=void::Void>, &str); 4] = [
+            (&mut pins.burn_wire_1,      "Burn Wire 1 only active"),
+            (&mut pins.burn_wire_2,      "Burn Wire 2 only active"),
+            (&mut pins.burn_wire_3,      "Burn Wire 3 only active"),
+            (&mut pins.burn_wire_4,      "Burn Wire 4 only active"),
+        ];
+
         // Manually check resistance(?) across pinpuller pins
-        for (n, pin) in pin_arr.iter_mut().enumerate(){
+        for (pin, name) in pin_arr.iter_mut(){
             pin.set_high().ok();
-            read_num(serial_writer, serial_reader);
+           
+            uwriteln!(serial_writer, "Burn Wire Active {}", name).ok();
+            uwriteln!(serial_writer, "Please Enter Current:");
             pin.set_low().ok();
             delay_cycles(1000);
         }
