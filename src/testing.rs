@@ -504,13 +504,13 @@ impl ManualFunctionalTests{
         const NUM_PINS: usize = 4;
         let expected_on_current: u16 = (FixedI64::<32>::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
         let mut accuracy: FixedI64<32> = FixedI64::ZERO;
-        let pin_arr: [(&mut dyn OutputPin<Error=void::Void>, &str); 4] = [
-            (&mut pins.burn_wire_1,      "Burn Wire 1 only active"),
-            (&mut pins.burn_wire_2,      "Burn Wire 2 only active"),
-            (&mut pins.burn_wire_3,      "Burn Wire 3 only active"),
-            (&mut pins.burn_wire_4,      "Burn Wire 4 only active"),
+        let mut pin_arr: [(&mut dyn OutputPin<Error=void::Void>, &str); 4] = [
+            (&mut pins.burn_wire_1,          "Burn Wire 1 only active"),
+            (&mut pins.burn_wire_2,          "Burn Wire 2 only active"),
+            (&mut pins.burn_wire_1_backup,   "Burn Wire 1 backup only active"),
+            (&mut pins.burn_wire_2_backup,   "Burn Wire 2 backup only active"),
         ];
-        let result: [PerformanceResult; 4] = [PerformanceResult::new("Burn Wire 1", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+        let mut result: [PerformanceResult; 4] = [PerformanceResult::new("Burn Wire 1", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
                                               PerformanceResult::new("Burn Wire 2", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
                                               PerformanceResult::new("Burn Wire 3", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
                                               PerformanceResult::new("Burn Wire 4", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO)];
@@ -522,9 +522,10 @@ impl ManualFunctionalTests{
             uwriteln!(serial_writer, "Please Enter Current:");
             pin.set_low().ok();
             delay_cycles(1000);
-            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current), FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current as i32), FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
         }
         result
+        
 
     }
     /*
