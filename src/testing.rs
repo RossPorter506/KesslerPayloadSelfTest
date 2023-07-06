@@ -494,13 +494,41 @@ impl ManualFunctionalTests{
         [SensorResult {name: "Endmass switch 1", result: (is_depressed_arr[0] && is_released_arr[0])},
          SensorResult {name: "Endmass switch 2", result: (is_depressed_arr[1] && is_released_arr[1])}]
     }
-    /*
+
     // Dependencies: pinpuller
-    pub fn pinpuller_functional_test() -> [SensorResult; 4] {
+    pub fn pinpuller_functional_test <'a, USCI: SerialUsci> (pins: &mut PinpullerActivationPins, serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> [PerformanceResult<'a>; 4] {
         // Enable each of the four redundant lines.
+        const EXPECTED_OFF_CURRENT: u16 = 0;
+        let mosfet_r_on_resistance: FixedI64<32> = FixedI64::<32>::from(3)/100; // Verify(?)
+        let pinpuller_mock_resistance: FixedI64<32> = FixedI64::<32>::from(2);
+        let sense_resistance: FixedI64<32> = FixedI64::<32>::from(4)/10;
+        const NUM_PINS: usize = 4;
+        let expected_on_current: u16 = (FixedI64::<32>::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
+        let mut accuracy: FixedI64<32> = FixedI64::ZERO;
+        let pin_arr: [(&mut dyn OutputPin<Error=void::Void>, &str); 4] = [
+            (&mut pins.burn_wire_1,      "Burn Wire 1 only active"),
+            (&mut pins.burn_wire_2,      "Burn Wire 2 only active"),
+            (&mut pins.burn_wire_3,      "Burn Wire 3 only active"),
+            (&mut pins.burn_wire_4,      "Burn Wire 4 only active"),
+        ];
+        let result: [PerformanceResult; 4] = [PerformanceResult::new("Burn Wire 1", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 2", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 3", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO),
+                                              PerformanceResult::new("Burn Wire 4", FixedI64::<32>::ZERO, FixedI64::<32>::ZERO, FixedI64::<32>::ZERO)];
         // Manually check resistance(?) across pinpuller pins
-        todo!();
+        for (n, (pin, name)) in pin_arr.iter_mut().enumerate(){
+            pin.set_high().ok();
+            let measured = read_num(serial_writer, serial_reader);
+            uwriteln!(serial_writer, "Burn Wire Active {}", name).ok();
+            uwriteln!(serial_writer, "Please Enter Current:");
+            pin.set_low().ok();
+            delay_cycles(1000);
+            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current), FixedI64::<32>::from(5)/100, FixedI64::<32>::from(20)/100);
+        }
+        result
+
     }
+    /*
     // Dependencies: LMS power switches
     pub fn lms_power_switch_functional_test() -> [SensorResult; 2] {
         // Enable LMS LED EN
