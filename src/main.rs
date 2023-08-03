@@ -112,11 +112,22 @@ fn main() -> ! {
         AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+        
+        // Store red LED in a mutex for sharing with interrupts
+        critical_section::with(|cs| 
+            RED_LED.borrow(cs).try_borrow_mut().map(|mut red_led| 
+                *red_led = Some(led_pins.red_led)) 
+        ).ok();
 
-        with(|cs| *RED_LED.borrow(cs).borrow_mut() = Some(led_pins.red_led));
-        with(|cs| *P3IV.borrow(cs).borrow_mut() = Some(p3iv));        
+        // Store port 3 interrupt vector in a mutex for sharing with interrupts
+        critical_section::with(|cs| 
+            P3IV.borrow(cs).try_borrow_mut().map(|mut iv| {
+                *iv = Some(p3iv)
+            })
+        ).ok();
+
         deploy_sense_pins.endmass_sense_2.select_rising_edge_trigger().enable_interrupts();
-        unsafe {enable_int()};              
+        unsafe {enable_int()};
         ManualPerformanceTests::interrupt_led_test(&mut serial_writer, &mut serial_rx_pin, &mut deploy_sense_pins);
 
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
@@ -232,34 +243,25 @@ let debug_serial_pins = DebugSerialPins{
 
 #[interrupt]
 fn PORT3(){    
-    
+    //Disable interrupts
     critical_section::with(|cs| {
 
-        let z = RED_LED.borrow(cs).try_borrow_mut();
-        match z {
-            Ok(mut y) => {
-                y.as_mut().map(|red_led| {
-                    let binding = P3IV
-                        .borrow(cs)
-                        .try_borrow_mut();
-                    match binding {
-                        Ok(mut c) => {
-                            let a = c.as_mut();
-                            match a {
-                                Some(i) => 
-                                    match i.get_interrupt_vector() {
-                                        GpioVector::Pin1Isr => red_led.toggle().ok(),
-                                        _ => None
-                                    }
-                                _ => None,
-                            }
+        // Borrow the red LED
+        RED_LED.borrow(cs).try_borrow_mut().map(|mut led_ref_mut| {
+            if let Some(red_led) = led_ref_mut.as_mut() {
+
+                // Borrow the interrupt vector
+                P3IV.borrow(cs).try_borrow_mut().map(|mut vector_ref_mut| {
+                    if let Some(ivector) = vector_ref_mut.as_mut() {
+
+                        // Check if Pin 1 caused the interrupt
+                        if let GpioVector::Pin1Isr = ivector.get_interrupt_vector() {
+                            red_led.toggle().ok();
                         }
-                        _ => None
                     }
-                })
+                }).ok();
             }
-            _ => None
-        }
+        }).ok();
     });
 }
 
