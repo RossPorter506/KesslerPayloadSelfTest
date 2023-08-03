@@ -4,7 +4,9 @@
 
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
+#![feature(abi_msp430_interrupt)]
 
+use critical_section::with;
 use embedded_hal::{digital::v2::*};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
@@ -12,6 +14,16 @@ use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
+
+use core::{borrow::BorrowMut, any::Any};
+use msp430fr2355::interrupt;
+use msp430fr2x5x_hal::{
+    gpio::{GpioVector, Output, Pin, Pin0, PxIV, P1, Pulldown, Pin1}, serial::Rx
+};
+use core::cell::RefCell;
+use embedded_hal::timer::*;
+use msp430::interrupt::{enable as enable_int, Mutex};
+
 
 #[cfg(debug_assertions)]
 use panic_msp430 as _;
@@ -34,6 +46,9 @@ mod serial; use serial::SerialWriter;
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
 
+static RED_LED: Mutex<RefCell<Option<Pin<P2, Pin1, Output>>>> = Mutex::new(RefCell::new(None));
+static P3IV: Mutex<RefCell<Option<PxIV<P3>>>> = Mutex::new(RefCell::new(None));
+
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
@@ -47,7 +62,8 @@ fn main() -> ! {
             mut lms_control_pins, 
             mut deploy_sense_pins, 
             mut payload_peripheral_cs_pins, 
-            debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
+            debug_serial_pins,
+            p3iv) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
         
         lms_control_pins.lms_led_enable.set_high().ok();
         led_pins.green_led.toggle().ok();
@@ -97,8 +113,15 @@ fn main() -> ! {
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
+        with(|cs| *RED_LED.borrow(cs).borrow_mut() = Some(led_pins.red_led));
+        with(|cs| *P3IV.borrow(cs).borrow_mut() = Some(p3iv));        
+        deploy_sense_pins.endmass_sense_2.select_rising_edge_trigger().enable_interrupts();
+        unsafe {enable_int()};              
+        ManualPerformanceTests::interrupt_led_test(&mut serial_writer, &mut serial_rx_pin, &mut deploy_sense_pins);
+
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
-        idle_loop(&mut led_pins);
+        // idle_loop(&mut led_pins);
+        #[allow(clippy::empty_loop)] loop{}
     }
     else {#[allow(clippy::empty_loop)] loop{}}
 }
@@ -148,15 +171,18 @@ fn collect_pins(pmm: PMM, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
     TetherLMSPins,
     DeploySensePins,
     PayloadSPIChipSelectPins,
-    DebugSerialPins){
+    DebugSerialPins,
+    PxIV<P3>){
 
 let pmm = Pmm::new(pmm);
 
 let port2 = Batch::new(p2).split(&pmm);
-let port3 = Batch::new(p3).split(&pmm);
+let port3 = Batch::new(p3).config_pin1(|p| p.pulldown()).split(&pmm);
 let port4 = Batch::new(p4).split(&pmm);
 let port5 = Batch::new(p5).split(&pmm);
 let port6 = Batch::new(p6).split(&pmm);
+
+let p3iv = port3.pxiv;
 
 let payload_spi_pins = PayloadSPIBitBangPins {
     miso: port4.pin7.pullup(),
@@ -201,7 +227,40 @@ let debug_serial_pins = DebugSerialPins{
     rx: port4.pin2.to_output().to_alternate1(),
     tx: port4.pin3.to_output().to_alternate1(),};
 
-(payload_spi_pins, pinpuller_pins, led_pins, payload_control_pins, lms_control_pins, deploy_sense_pins, payload_peripheral_cs_pins, debug_serial_pins)
+(payload_spi_pins, pinpuller_pins, led_pins, payload_control_pins, lms_control_pins, deploy_sense_pins, payload_peripheral_cs_pins, debug_serial_pins, p3iv)
+}
+
+#[interrupt]
+fn PORT3(){    
+    
+    critical_section::with(|cs| {
+
+        let z = RED_LED.borrow(cs).try_borrow_mut();
+        match z {
+            Ok(mut y) => {
+                y.as_mut().map(|red_led| {
+                    let binding = P3IV
+                        .borrow(cs)
+                        .try_borrow_mut();
+                    match binding {
+                        Ok(mut c) => {
+                            let a = c.as_mut();
+                            match a {
+                                Some(i) => 
+                                    match i.get_interrupt_vector() {
+                                        GpioVector::Pin1Isr => red_led.toggle().ok(),
+                                        _ => None
+                                    }
+                                _ => None,
+                            }
+                        }
+                        _ => None
+                    }
+                })
+            }
+            _ => None
+        }
+    });
 }
 
 // The compiler will emit calls to the abort() compiler intrinsic if debug assertions are

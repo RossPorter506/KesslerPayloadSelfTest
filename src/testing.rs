@@ -870,6 +870,30 @@ impl ManualPerformanceTests{
         );
         current_result
     }
+    pub fn interrupt_led_test<USCI:SerialUsci>(
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI>,
+        pins: &mut DeploySensePins,
+        ) {       
+                        
+        // let mut temp_val = 0;
+        // if pins.endmass_sense_2.is_high().unwrap_or(false){
+        //     temp_val = 1;
+        // }
+        // uwriteln!(debug_writer, "{}", temp_val);
+        // User prompted to trigger endmass switch 1
+        // When closed, an interrupt should be called to turn on the red LED
+        uwriteln!(debug_writer, "To test interrupt, please trigger endmass switch 1!").ok();
+        uwriteln!(debug_writer, "Enter whether the red LED has turned on or stayed off (1 or 0)").ok();
+
+        let led_on = read_num(debug_writer, serial_reader);   
+    
+        if led_on == 1{
+            uwriteln!(debug_writer, "Interrupt called (test successful)").ok();
+        }else{
+            uwriteln!(debug_writer, "Interrupt not called (test failed)").ok();
+        }        
+    }
 }
 
 /// Functional test result.
