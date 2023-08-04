@@ -31,10 +31,10 @@ fixed="2.0.0-alpha.11"
 opt-level = "z"
 codegen-units = 1
 lto = "on"
-strip = true
+strip = true # Remove if you want to analyze with cargo-bloat
 
 [profile.dev]
-opt-level = "s"
+opt-level = "z"
 codegen-units = 1
 lto = "fat"
 debug = true
