@@ -157,9 +157,9 @@ pub mod sensor_equations {
         generic_temperature_eq(v_adc_millivolts, 3300)
     }
     fn generic_temperature_eq(v_adc_millivolts: u16, vcc: u16) -> u16 {
-        let ln_millivolts_approx = FixedI64::<32>::from(FixedI64::<32>::from(v_adc_millivolts).int_log10()) / FixedI64::<32>::LOG10_E;
+        let ln_millivolts_approx = FixedI64::<32>::from(FixedI64::<32>::from(v_adc_millivolts).checked_int_log10().unwrap_or(0)).checked_div(FixedI64::<32>::LOG10_E).unwrap_or(FixedI64::ZERO);
         //let ln_millivolts_approx = (u16::ilog2(v_adc_millivolts) - u16::ilog10(v_adc_millivolts)) as u16; // approximate ln using integer logs
-        (FixedI64::<32>::from(1_028_100) / ( FixedI64::<32>::from(705)+298*(FixedI64::<32>::from(v_adc_millivolts))*10_000/(FixedI64::<32>::from(vcc)-ln_millivolts_approx) )).saturating_to_num()
+        (FixedI64::<32>::from(1_028_100).checked_div( FixedI64::<32>::from(705)+298*(10_000*FixedI64::<32>::from(v_adc_millivolts)).checked_div(FixedI64::<32>::from(vcc)-ln_millivolts_approx).unwrap_or(FixedI64::ZERO) )).unwrap_or(FixedI64::ZERO).saturating_to_num()
     }
 }
 /* Supply control equations */

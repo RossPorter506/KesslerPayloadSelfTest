@@ -870,6 +870,46 @@ impl ManualPerformanceTests{
         );
         current_result
     }
+
+    pub fn thermal_chamber_temp_sensors_test<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+        payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
+        spi_bus: &mut PayloadSPIController, 
+        debug_writer: &'a mut SerialWriter<USCI>,
+        serial_reader: &'a mut Rx<USCI>) {
+    
+        const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
+            (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
+            (LMS_RECEIVER_TEMPERATURE_SENSOR,       "LMS Receiver"),
+            (MSP430_TEMPERATURE_SENSOR,             "MSP430"),
+            (HEATER_SUPPLY_TEMPERATURE_SENSOR,      "Heater supply"),
+            (HVDC_SUPPLIES_TEMPERATURE_SENSOR,      "HVDC Supplies"),
+            (TETHER_MONITORING_TEMPERATURE_SENSOR,  "Tether monitoring"),
+            (TETHER_CONNECTOR_TEMPERATURE_SENSOR,   "Tether connector"),
+            (MSP_3V3_TEMPERATURE_SENSOR,            "MSP 3V3 supply"),
+        ];    
+        
+        // Prompt to setup thermal chamber
+        uwriteln!(debug_writer, "Thermal Chamber Test").ok();
+        uwriteln!(debug_writer, "--------------------").ok();
+        uwriteln!(debug_writer, "Press any key to begin reading temperatures and then begin thermal chamber cycling").ok();
+        read_num(debug_writer, serial_reader);
+
+        // Loop to continuously read temperature values
+        // 8 temperature sensor values will be printed per line
+        // E.g 20.1 20.0 20.2 20.0 20.0 20.1 20.3 19.9
+        // A matlab script can be later used to plot 8 separate graphs with printed data 
+
+        for i in 1..10{
+            for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
+                let tempr = payload.get_temperature_kelvin(sensor, spi_bus);
+                uwrite!(debug_writer, "{}: ", name).ok();
+                uwriteln!(debug_writer, "{}", tempr).ok();     
+            }  
+            uwriteln!(debug_writer, "").ok();
+            delay_cycles(1_000_000);
+        }        
+        uwriteln!(debug_writer, "Test Finished").ok();
+    }
 }
 
 /// Functional test result.

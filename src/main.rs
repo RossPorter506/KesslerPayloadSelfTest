@@ -96,7 +96,8 @@ fn main() -> ! {
         AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
-
+        ManualPerformanceTests::thermal_chamber_temp_sensors_test(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+        
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
         idle_loop(&mut led_pins);
     }
