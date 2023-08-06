@@ -244,24 +244,22 @@ let debug_serial_pins = DebugSerialPins{
 #[interrupt]
 fn PORT3(){    
     //Disable interrupts
-    critical_section::with(|cs| {
+    critical_section::with(|cs| -> Option<()> { // Return empty option just so we can use '?' operator.
 
         // Borrow the red LED
-        RED_LED.borrow(cs).try_borrow_mut().map(|mut led_ref_mut| {
-            if let Some(red_led) = led_ref_mut.as_mut() {
+        let mut tmp = RED_LED.borrow(cs).try_borrow_mut().ok()?;
+        let red_led = tmp.as_mut()?;
 
-                // Borrow the interrupt vector
-                P3IV.borrow(cs).try_borrow_mut().map(|mut vector_ref_mut| {
-                    if let Some(ivector) = vector_ref_mut.as_mut() {
+        // Borrow the interrupt vector
+        let mut tmp = P3IV.borrow(cs).try_borrow_mut().ok()?;
+        let ivector = tmp.as_mut()?;
 
-                        // Check if Pin 1 caused the interrupt
-                        if let GpioVector::Pin1Isr = ivector.get_interrupt_vector() {
-                            red_led.toggle().ok();
-                        }
-                    }
-                }).ok();
-            }
-        }).ok();
+        // Check if Pin 1 caused the interrupt
+        if let GpioVector::Pin1Isr = ivector.get_interrupt_vector() {
+            red_led.toggle().ok();
+        }
+        
+        Some(())
     });
 }
 
