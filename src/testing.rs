@@ -891,24 +891,21 @@ impl ManualPerformanceTests{
         // Prompt to setup thermal chamber
         uwriteln!(debug_writer, "Thermal Chamber Test").ok();
         uwriteln!(debug_writer, "--------------------").ok();
-        uwriteln!(debug_writer, "Press any key to begin reading temperatures and then begin thermal chamber cycling").ok();
+        uwriteln!(debug_writer, "Enter any number to begin reading temperatures and then begin thermal chamber cycling").ok();
         read_num(debug_writer, serial_reader);
 
         // Loop to continuously read temperature values
-        // 8 temperature sensor values will be printed per line
-        // E.g 20.1 20.0 20.2 20.0 20.0 20.1 20.3 19.9
-        // A matlab script can be later used to plot 8 separate graphs with printed data 
-
-        for i in 1..10{
+        // 8 temperature sensor values will be printed every second or so
+        // INFINITE loop so manually turn of power supply exit loop.
+        loop{
             for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
                 let tempr = payload.get_temperature_kelvin(sensor, spi_bus);
                 uwrite!(debug_writer, "{}: ", name).ok();
-                uwriteln!(debug_writer, "{}", tempr).ok();     
+                uwriteln!(debug_writer, "{}", tempr - 273).ok();     
             }  
             uwriteln!(debug_writer, "").ok();
             delay_cycles(1_000_000);
         }        
-        uwriteln!(debug_writer, "Test Finished").ok();
     }
 }
 
