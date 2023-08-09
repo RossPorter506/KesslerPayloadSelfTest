@@ -71,7 +71,7 @@ pub mod peripheral_vcc_values {
 
 /********** Sensor mappings **********/
 pub mod sensor_locations {
-    use crate::{adc::*};
+    use crate::adc::*;
     // Tether ADC
     pub const CATHODE_OFFSET_CURRENT_SENSOR: TetherSensor = TetherSensor{channel: ADCChannel::IN0};
     pub const TETHER_BIAS_CURRENT_SENSOR:    TetherSensor = TetherSensor{channel: ADCChannel::IN1};

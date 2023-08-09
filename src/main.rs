@@ -2,10 +2,12 @@
 #![no_std]
 #![allow(dead_code, unused_variables, unused_imports)] // TODO: Remove when ready
 
+#![allow(clippy::upper_case_acronyms, clippy::needless_return)]
+
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
 
-use embedded_hal::{digital::v2::*};
+use embedded_hal::digital::v2::*;
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
 #[allow(unused_imports)]
