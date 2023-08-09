@@ -875,7 +875,7 @@ impl ManualPerformanceTests{
         payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
         spi_bus: &mut PayloadSPIController, 
         debug_writer: &'a mut SerialWriter<USCI>,
-        serial_reader: &'a mut Rx<USCI>) {
+        serial_reader: &'a mut Rx<USCI>) -> ! { // Does not return
     
         const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
             (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
@@ -891,17 +891,17 @@ impl ManualPerformanceTests{
         // Prompt to setup thermal chamber
         uwriteln!(debug_writer, "Thermal Chamber Test").ok();
         uwriteln!(debug_writer, "--------------------").ok();
-        uwriteln!(debug_writer, "Enter any number to begin reading temperatures and then begin thermal chamber cycling").ok();
-        read_num(debug_writer, serial_reader);
+        uwriteln!(debug_writer, "Press any key to begin reading temperatures and then begin thermal chamber cycling").ok();
+        wait_for_any_packet(serial_reader);
 
         // Loop to continuously read temperature values
         // 8 temperature sensor values will be printed every second or so
-        // INFINITE loop so manually turn of power supply exit loop.
+        // INFINITE loop so manually turn off power supply to exit loop.
         loop{
             for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
                 let tempr = payload.get_temperature_kelvin(sensor, spi_bus);
                 uwrite!(debug_writer, "{}: ", name).ok();
-                uwriteln!(debug_writer, "{}", tempr - 273).ok();     
+                uwriteln!(debug_writer, "{}", tempr - CELCIUS_TO_KELVIN_OFFSET).ok();     
             }  
             uwriteln!(debug_writer, "").ok();
             delay_cycles(1_000_000);
