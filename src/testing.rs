@@ -58,8 +58,8 @@ impl AutomatedFunctionalTests{
         uwriteln!(serial, "==== Automated Functional Tests Complete ====").ok();
     }
     // Internal function to reduce code duplication
-    fn test_adc_functional<CsPin: ADCCSPin, SENSOR: ADCSensor>(  
-            adc: &mut ADC<CsPin, SENSOR>, 
+    fn test_adc_functional<CsPin: ADCCSPin, SENSOR: ADCSensor, const VCC: u16>(  
+            adc: &mut ADC<CsPin, SENSOR, VCC>, 
             spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>,
             wanted_channel: ADCChannel) -> bool {
         let payload = (wanted_channel as u32) << (NUM_CYCLES_FOR_TWO_READINGS - NUM_ADDRESS_BITS - NUM_LEADING_ZEROES); // see adc.rs read_count_from

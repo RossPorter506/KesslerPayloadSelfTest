@@ -27,9 +27,9 @@ pub enum ADCChannel {
 	IN7=7,
 }
 // Shorthand type for each ADC instance
-pub type TetherADC      = ADC<TetherADCCSPin, TetherSensor>;
-pub type TemperatureADC = ADC<TemperatureADCCSPin, TemperatureSensor>;
-pub type MiscADC        = ADC<MiscADCCSPin, MiscSensor>;
+pub type TetherADC      = ADC<TetherADCCSPin, TetherSensor, ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS>;
+pub type TemperatureADC = ADC<TemperatureADCCSPin, TemperatureSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>;
+pub type MiscADC        = ADC<MiscADCCSPin, MiscSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>;
 
 // Generic ADC chip select pin type 
 pub trait ADCCSPin: OutputPin{}
@@ -56,24 +56,24 @@ pub enum VccType {
 //temperature_adc.read_count_from(TetherSensor{adc:TetherADC, channel:ADCChannel::IN0}) // compile error!
 
 const ADC_RESOLUTION: u16 = 4095;
-pub struct ADC<CsPin: ADCCSPin, SensorType:ADCSensor>{
-    pub vcc_millivolts: u16,
+pub struct ADC<CsPin: ADCCSPin, SensorType:ADCSensor, const VCC_MV: u16>{
     pub cs_pin: CsPin,
     _adc_type: PhantomData<SensorType>
 }
+// Only allow construction of the ADC type when all fields match
 impl TetherADC{
     pub fn new(cs_pin: TetherADCCSPin) -> TetherADC {
-        ADC::<TetherADCCSPin, TetherSensor>{vcc_millivolts: ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
+        ADC::<TetherADCCSPin, TetherSensor, ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS>{cs_pin, _adc_type: PhantomData}
     }
 }
 impl TemperatureADC{
     pub fn new(cs_pin: TemperatureADCCSPin) -> TemperatureADC {
-        ADC::<TemperatureADCCSPin, TemperatureSensor>{vcc_millivolts: ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
+        ADC::<TemperatureADCCSPin, TemperatureSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>{cs_pin, _adc_type: PhantomData}
     }
 }
 impl MiscADC{
     pub fn new(cs_pin: MiscADCCSPin) -> MiscADC {
-        ADC::<MiscADCCSPin, MiscSensor>{vcc_millivolts: ADC_VCC_VOLTAGE_MILLIVOLTS, cs_pin, _adc_type: PhantomData}
+        ADC::<MiscADCCSPin, MiscSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>{cs_pin, _adc_type: PhantomData}
     }
 }
 
@@ -85,7 +85,7 @@ pub const NUM_CYCLES_FOR_TWO_READINGS: u8 = NUM_CYCLES_FOR_ONE_READING * 2;
 pub const NUM_ADDRESS_BITS: u8 = 3;
 pub const NUM_LEADING_ZEROES: u8 = 2;
 
-impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
+impl<CsPin: ADCCSPin, SensorType:ADCSensor, const VCC_MV: u16> ADC<CsPin, SensorType, VCC_MV>{
     // Note: ADC always sends the value of IN0 when first selected, second reading will be from the channel provided.
     pub fn read_count_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut impl PayloadSPI<{IdleHigh}, {SampleSecondEdge}>) -> u16{
         // When SPI packet begins the ADC will track and read channel 1 regardless. 
@@ -104,7 +104,7 @@ impl<CsPin: ADCCSPin, SensorType:ADCSensor> ADC<CsPin, SensorType>{
         }
     }
     pub fn count_to_voltage(&self, count: u16) -> u16{
-        ((count as u32 * self.vcc_millivolts as u32) / ADC_RESOLUTION as u32) as u16
+        ((count as u32 * VCC_MV as u32) / ADC_RESOLUTION as u32) as u16
     }
     pub fn read_voltage_from(&mut self, wanted_sensor: &SensorType, spi_bus: &mut PayloadSPIController) -> u16{
         let count = self.read_count_from(wanted_sensor, spi_bus.borrow());
