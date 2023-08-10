@@ -28,6 +28,16 @@ macro_rules! dbg_uwrite {
     }
 }
 
+macro_rules! uwrite_coloured {    
+    ($a:expr, $b:expr, $c:expr) => {
+        match $c{
+            "red" => uwrite!($a, "\x1b[31m{}\x1b[0m", $b).ok(),
+            "green" => uwrite!($a, "\x1b[32m{}\x1b[0m", $b).ok(),  
+            "yellow" => uwrite!($a, "\x1b[33m{}\x1b[0m", $b).ok(),          
+            _ =>uwrite!($a, "").ok() 
+        }
+    }
+}
 /// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
 /// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
 /// Functional tests are pass/fail.
@@ -917,11 +927,12 @@ pub struct SensorResult<'a> {
 // Define how to print a SensorResult
 impl ufmt::uDisplay for SensorResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
-        let result = match self.result {
-            true => " OK ",
-            false => "FAIL"};
+        uwrite!(f, "[").ok();
+        match self.result {
+            true => uwrite_coloured!(f, " OK ", "green"),
+            false => uwrite_coloured!(f, "FAIL", "red")};
 
-        uwrite!(f, "[{}] {}", result, self.name).ok();
+        uwrite!(f, "] {}", self.name).ok();
         Ok(())
     }
 }
@@ -941,13 +952,14 @@ impl PerformanceResult<'_>{
 // Define how to print a PerformanceResult
 impl ufmt::uDisplay for PerformanceResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
-        let result = match self.performance {
-            Performance::Nominal    => " OK ",
-            Performance::Inaccurate => "INAC",
-            Performance::NotWorking => "FAIL"};
+        uwrite!(f, "[").ok();
+        match self.performance {
+            Performance::Nominal    => uwrite_coloured!(f, " OK ", "green"),
+            Performance::Inaccurate => uwrite_coloured!(f, "INAC", "yellow"),
+            Performance::NotWorking => uwrite_coloured!(f, "FAIL", "red"),};
         let percent_acc: i32 = (self.accuracy*100).to_num();
         let fractional_percent: i32 = (self.accuracy*10000).to_num::<i32>() - percent_acc*100;
-        uwrite!(f, "[{}] {}, {}.{}% error", result, self.name, percent_acc, fractional_percent).ok();
+        uwrite!(f, "] {}, {}.{}% error", self.name, percent_acc, fractional_percent).ok();
         Ok(())
     }
 }
