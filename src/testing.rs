@@ -10,34 +10,10 @@ use crate::serial::{SerialWriter, wait_for_any_packet};
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use crate::serial::{read_num};
+use crate::serial::{read_num, TextColours::*};
+use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 
-//Macros to only print if debug_print feature is enabled
-macro_rules! dbg_uwriteln {
-    ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug")]
-        {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
-    }
-}
-#[allow(unused_macros)]
-macro_rules! dbg_uwrite {
-    ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug")]
-        {uwrite!($first, "[....] ").ok(); uwrite!($first, $( $($rest)* )*).ok();}
-    }
-}
-
-macro_rules! uwrite_coloured {    
-    ($a:expr, $b:expr, $c:expr) => {
-        match $c{
-            "red" => uwrite!($a, "\x1b[31m{}\x1b[0m", $b).ok(),
-            "green" => uwrite!($a, "\x1b[32m{}\x1b[0m", $b).ok(),  
-            "yellow" => uwrite!($a, "\x1b[33m{}\x1b[0m", $b).ok(),          
-            _ =>uwrite!($a, "").ok() 
-        }
-    }
-}
 /// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
 /// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
 /// Functional tests are pass/fail.
@@ -929,8 +905,8 @@ impl ufmt::uDisplay for SensorResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         uwrite!(f, "[").ok();
         match self.result {
-            true => uwrite_coloured!(f, " OK ", "green"),
-            false => uwrite_coloured!(f, "FAIL", "red")};
+            true => uwrite_coloured!(f, " OK ", Green),
+            false => uwrite_coloured!(f, "FAIL", Red)};
 
         uwrite!(f, "] {}", self.name).ok();
         Ok(())
@@ -954,9 +930,9 @@ impl ufmt::uDisplay for PerformanceResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         uwrite!(f, "[").ok();
         match self.performance {
-            Performance::Nominal    => uwrite_coloured!(f, " OK ", "green"),
-            Performance::Inaccurate => uwrite_coloured!(f, "INAC", "yellow"),
-            Performance::NotWorking => uwrite_coloured!(f, "FAIL", "red"),};
+            Performance::Nominal    => uwrite_coloured!(f, " OK ", Green),
+            Performance::Inaccurate => uwrite_coloured!(f, "INAC", Yellow),
+            Performance::NotWorking => uwrite_coloured!(f, "FAIL", Red),};
         let percent_acc: i32 = (self.accuracy*100).to_num();
         let fractional_percent: i32 = (self.accuracy*10000).to_num::<i32>() - percent_acc*100;
         uwrite!(f, "] {}, {}.{}% error", self.name, percent_acc, fractional_percent).ok();
