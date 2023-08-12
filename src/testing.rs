@@ -36,8 +36,6 @@ macro_rules! dbg_uwrite {
 /// Delta: 2.3283064e-10 = 0.00000000023283064
 type Fxd = FixedI64::<32>;
 
-const DELTA: Fxd = Fxd::DELTA;
-
 /// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
 /// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
 /// Functional tests are pass/fail.
@@ -225,7 +223,7 @@ impl AutomatedFunctionalTests{
 
 /// Rather than using percent error (which isn't defined when the actual value is zero), we use Relative Percent Difference (RPD).
 /// Outputs are between -1 and 1. Values near zero are close to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual.
-fn calculate_rpd(measured:i32, actual: i32) -> Fxd {
+fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
     if actual == 0 && measured == 0{
         return Fxd::ZERO;
     }
@@ -233,20 +231,39 @@ fn calculate_rpd(measured:i32, actual: i32) -> Fxd {
     let measured = Fxd::from(measured);
 
     // (measured - actual) / measured.abs() + actual.abs()
-    (measured - actual).checked_div(measured.abs() + actual.abs()).unwrap_or(Fxd::lit("2")) // The unwrap_or should never fire, as we check if both are zero at the start.
+    (measured - actual).checked_div(measured.abs() + actual.abs())
+        .unwrap_or_else(|| if measured - actual > 0 {Fxd::MAX} else {Fxd::MIN}) // This only fires on overflow. 
+    // Ideally we could use saturating_div instead of checked_div and unwrap_or_else
+    // but the panic_never condition fails even if we check denominator is non-zero first...
 }
 /// Iteratively updates an average with a new value
 fn in_place_average(acc: Fxd, new: Fxd, n: u16) -> Fxd{
     //acc + ((new - acc) / Fxd::from(n+1))
-    acc + ((new - acc).checked_div(Fxd::from(n+1)).unwrap_or(Fxd::lit("1"))) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
+    acc + ((new - acc).checked_div(Fxd::from(n+1))
+        .unwrap_or(Fxd::ZERO)) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
 } 
 
-fn calculate_performance_result(name: &str, rpd: Fxd, success_threshhold: Fxd, inaccurate_threshhold: Fxd) -> PerformanceResult<'_> {
+fn calculate_performance_result(name: &str, rpd: Fxd, succ_percent: u8, inacc_percent: u8) -> PerformanceResult<'_> {
     let performance = match rpd.abs() {
-        x if x < success_threshhold    => Performance::Nominal,
-        x if x < inaccurate_threshhold => Performance::Inaccurate,
+        x if x < Fxd::from(succ_percent) / 100  => Performance::Nominal,
+        x if x < Fxd::from(inacc_percent) / 100 => Performance::Inaccurate,
         _ => Performance::NotWorking};
     PerformanceResult{name, performance, accuracy: rpd}
+}
+
+/// Calculates a square root approximation using Newton's method. Panics on negative values.
+const fn fixed_sqrt(x: Fxd) -> Fxd {
+    if x.is_negative() {panic!();} 
+    else if x.is_zero() {return Fxd::ZERO;}
+    let mut guess = x;
+
+    // No for loops in const fn's yet.
+    let mut iterations = 10;
+    while iterations > 0 {
+        guess = (guess.unwrapped_add(x.unwrapped_div(guess))).unwrapped_div_int(2);
+        iterations -= 1;
+    }
+    return guess;
 }
 
 /// Accuracy-based tests that can be run automatically, possibly after some initial setup.
@@ -265,7 +282,6 @@ impl AutomatedPerformanceTests{
                 uwriteln!(serial, "{}", sensor_result).ok();
             }
         }
-
         uwriteln!(serial, "{}", Self::test_pinpuller_current_sensor(payload, pinpuller_pins, spi_bus)).ok();
 
         uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
@@ -282,15 +298,15 @@ impl AutomatedPerformanceTests{
             &PayloadController::set_cathode_offset_switch, 
             &PayloadController::get_cathode_offset_voltage_millivolts, 
             &PayloadController::get_cathode_offset_current_microamps, 
-            &|pyld, n:u32, spi| PayloadController::set_cathode_offset_voltage(pyld,n,spi), 
+            &PayloadController::set_cathode_offset_voltage, 
             CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, 
             CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, 
             payload,
             spi_bus, 
             debug_writer);
 
-        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
-        let current_result = calculate_performance_result("Cathode offset current", current_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
+        let current_result = calculate_performance_result("Cathode offset current", current_accuracy, 5, 20);
         [voltage_result, current_result]
     }
 
@@ -306,22 +322,19 @@ impl AutomatedPerformanceTests{
             &PayloadController::set_tether_bias_switch, 
             &PayloadController::get_tether_bias_voltage_millivolts, 
             &PayloadController::get_tether_bias_current_microamps, 
-            &|pyld, n:u32, spi| PayloadController::set_tether_bias_voltage(pyld,n,spi), 
+            &PayloadController::set_tether_bias_voltage, 
             TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, 
             TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, 
             payload,
             spi_bus, 
             debug_writer);
 
-        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
-        let current_result = calculate_performance_result("Tether bias current", current_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
+        let current_result = calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
         [voltage_result, current_result]
     }
     
-    /// Internal function to reduce code duplication. Accepts closures as arguments.
-    /// These closures take the payload controller and a function pointer to the desired function (alongside any other inputs).
-    /// These are combined into the desired function call inside the closure.
-    //  I tried with regular function pointers, but Rust didn't enjoy the const generic subtypes.
+    /// Internal function to reduce code duplication.
     fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
         set_switch_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, SwitchState), 
         measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
@@ -387,11 +400,17 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController, 
             debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
-        let circuit_resistance = Fxd::lit("10") + Fxd::lit("0.01"); // heater resistance + shunt resistor
-        let heater_max_power = Fxd::lit("1"); // TODO: Verify?
-        let max_on_current_ma = Fxd::from(HEATER_MAX_VOLTAGE_MILLIVOLTS) / circuit_resistance; 
 
-        let power_limited_max_current_ma = Fxd::lit("314.66"); //314.66mA = 1000 * sqrt(heater_max_power / circuit_resistance);
+        const HEATER_RESISTANCE_MOHMS: u16 = 10_000;
+        const SHUNT_RESISTANCE_MOHMS: u16 = 10;
+        const CIRCUIT_RESISTANCE_MOHMS: u16 = HEATER_RESISTANCE_MOHMS + SHUNT_RESISTANCE_MOHMS; // heater resistance + shunt resistor
+        const HEATER_MAX_POWER_MWATTS: u16 = 1000; // TODO: Verify?
+        const CIRCUIT_LIMITED_MAX_CURRENT_MA: u16 = 
+            ((HEATER_MAX_VOLTAGE_MILLIVOLTS as u32 * 1000) / (CIRCUIT_RESISTANCE_MOHMS as u32)) as u16; 
+        
+        const POWER_LIMITED_MAX_CURRENT_MA: Fxd = fixed_sqrt( Fxd::const_from_int(HEATER_MAX_POWER_MWATTS as i64).unwrapped_div_int(CIRCUIT_RESISTANCE_MOHMS as i64))
+            .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
+        
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
         let mut current_accuracy: Fxd = Fxd::ZERO;
 
@@ -412,8 +431,8 @@ impl AutomatedPerformanceTests{
 
             // Calculate expected voltage and current
             let expected_voltage_mv: u16 = output_voltage_mv;
-            let expected_current_ma: i16 = (Fxd::from(expected_voltage_mv) / circuit_resistance)
-                .min(power_limited_max_current_ma).to_num();
+            let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / CIRCUIT_RESISTANCE_MOHMS as u32)
+                .min(POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
             dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
 
             let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage_mv as i32);
@@ -423,8 +442,8 @@ impl AutomatedPerformanceTests{
             dbg_uwriteln!(debug_writer, "");
         }
 
-        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
-        let current_result = calculate_performance_result("Heater current", current_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
+        let current_result = calculate_performance_result("Heater current", current_accuracy, 5, 20);
         [voltage_result, current_result]
     }
     
@@ -435,37 +454,46 @@ impl AutomatedPerformanceTests{
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             p_pins: &'a mut PinpullerActivationPins, 
             spi_bus: &'a mut PayloadSPIController) -> PerformanceResult<'a> {
-        const EXPECTED_OFF_CURRENT: u16 = 0;
-        let mosfet_r_on_resistance: Fxd = Fxd::lit("0.03"); // Verify(?)
-        let pinpuller_mock_resistance: Fxd = Fxd::lit("2");
-        let sense_resistance: Fxd = Fxd::lit("0.4");
-        const NUM_PINS: usize = 4;
-        let expected_on_current: u16 = (Fxd::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
+        
+        const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
+        const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("2");
+        const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
+        const CIRCUIT_RESISTANCE: Fxd = 
+            PINPULLER_MOCK_RESISTANCE
+            .unwrapped_add(SENSE_RESISTANCE)
+            .unwrapped_add(MOSFET_R_ON_RESISTANCE)
+            .unwrapped_add(MOSFET_R_ON_RESISTANCE);
+
+        //const EXPECTED_OFF_CURRENT: u16 = 0; // not used, but for completeness
+        const EXPECTED_ON_CURRENT: Fxd = 
+            Fxd::const_from_int(PINPULLER_VOLTAGE_MILLIVOLTS as i64)
+            .unwrapped_div(CIRCUIT_RESISTANCE);
         
         let mut accuracy: Fxd = Fxd::ZERO;
-        //let mut accuracy_measurements: [f32; NUM_PINS+1] = [0.0; NUM_PINS+1];
-
-        accuracy = in_place_average(accuracy, 
-                                    calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, 0),
-                                    0); 
 
         // For each pin, activate the pinpuller through that channel and measure the current
-        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; NUM_PINS] = [&mut p_pins.burn_wire_1, 
-                                                                                &mut p_pins.burn_wire_1_backup, 
-                                                                                &mut p_pins.burn_wire_2, 
-                                                                                &mut p_pins.burn_wire_2_backup];
+        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; 4] = [
+            &mut p_pins.burn_wire_1, 
+            &mut p_pins.burn_wire_1_backup, 
+            &mut p_pins.burn_wire_2, 
+            &mut p_pins.burn_wire_2_backup];
+        
         for (n, pin) in pin_list.iter_mut().enumerate() {
             pin.set_high().ok();
+            let measured_current = payload.get_pinpuller_current_milliamps(spi_bus);
             accuracy = in_place_average(accuracy, 
-                                        calculate_rpd(payload.get_pinpuller_current_milliamps(spi_bus) as i32, expected_on_current as i32), 
-                                        (n+1) as u16);
+                calculate_rpd(measured_current as i32, EXPECTED_ON_CURRENT.to_num()), 
+                n as u16);
             pin.set_low().ok();
             delay_cycles(1000);
         }
-
-        calculate_performance_result("Pinpuller current sense",  Fxd::ZERO,  Fxd::ZERO, Fxd::lit("0.2"))
+        
+        calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
     }    
 }
+
+const DEFAULT_SUCCESS: Fxd = Fxd::lit("0.05");
+const DEFAULT_INACC: Fxd = Fxd::lit("0.2");
 
 /// Tests that require human intervention. These are pass/fail tests.
 pub struct ManualFunctionalTests{}
@@ -530,7 +558,7 @@ impl ManualFunctionalTests{
             uwriteln!(serial_writer, "Please Enter Current:").ok();
             pin.set_low().ok();
             delay_cycles(1000);
-            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current as i32), Fxd::lit("0.05"), Fxd::lit("0.2"));
+            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current as i32), 5, 20);
         }
         result
         
@@ -557,8 +585,6 @@ impl ManualFunctionalTests{
     }*/
 }
 
-//const TEMPERATURE_SENSOR_SUCCESS: u8 = 5; // within 5% of true value, etc
-//const TEMPERATURE_SENSOR_INACCURATE: u8 = 20;
 fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
         room_temp_k: u16,
         payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>,
@@ -583,15 +609,13 @@ fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState,
         let accuracy = calculate_rpd(tempr as i32, room_temp_k as i32);
         output_arr[n] = calculate_performance_result(name, 
                                                      accuracy, 
-                                                     TEMPERATURE_SENSOR_SUCCESS, 
-                                                     TEMPERATURE_SENSOR_INACCURATE)
+                                                     5, 
+                                                     20)
     }
 
     output_arr
 }
 
-const TEMPERATURE_SENSOR_SUCCESS: Fxd = Fxd::lit("0.05");
-const TEMPERATURE_SENSOR_INACCURATE: Fxd = Fxd::lit("0.2");
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 // Accuracy-based tests
 pub struct ManualPerformanceTests{}
@@ -646,8 +670,8 @@ impl ManualPerformanceTests{
             let accuracy = (result1.accuracy + result2.accuracy) / 2;
             result_arr[n] = calculate_performance_result(result1.name, 
                                                          accuracy, 
-                                                         TEMPERATURE_SENSOR_SUCCESS, 
-                                                         TEMPERATURE_SENSOR_INACCURATE)
+                                                         5, 
+                                                         20)
         }
         result_arr
     }
@@ -699,7 +723,7 @@ impl ManualPerformanceTests{
             DAC::voltage_to_count(0), 
             spi_bus);
 
-        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
         voltage_result
     }
     /*
@@ -758,7 +782,7 @@ impl ManualPerformanceTests{
 
     payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
-    let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+    let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
     voltage_result
     }
 
@@ -798,7 +822,7 @@ impl ManualPerformanceTests{
 
         payload.set_tether_bias_switch(SwitchState::Disconnected);
 
-        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
         voltage_result
     }
     pub fn test_heater_voltage<'a, USCI: SerialUsci>(
@@ -828,7 +852,7 @@ impl ManualPerformanceTests{
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
         }
 
-        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, Fxd::lit("0.05"), Fxd::lit("0.2"));
+        let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
         voltage_result
     }
     
@@ -877,8 +901,8 @@ impl ManualPerformanceTests{
         let current_result = calculate_performance_result(
             "Heater current",
             current_accuracy,
-            Fxd::lit("0.05"),
-            Fxd::lit("0.2"),
+            5,
+            20,
         );
         current_result
     }

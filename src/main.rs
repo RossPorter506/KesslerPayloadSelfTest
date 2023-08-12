@@ -6,6 +6,7 @@
 
 #![allow(incomplete_features)]
 #![feature(adt_const_params)]
+#![feature(const_trait_impl)]
 
 use embedded_hal::digital::v2::*;
 use msp430_rt::entry;

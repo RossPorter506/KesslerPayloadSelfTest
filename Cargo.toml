@@ -30,8 +30,8 @@ fixed="2.0.0-alpha.11"
 [profile.release]
 opt-level = "z"
 codegen-units = 1
-lto = true
-#strip = true # Uncomment to make final executable smaller, but unable to analyze with cargo bloat.
+lto = "fat"
+strip = "debuginfo" # Replace with 'true' to make final executable smaller, but unable to analyze with cargo bloat.
 
 [profile.dev]
 opt-level = "s"
