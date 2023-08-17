@@ -121,7 +121,7 @@ impl AutomatedFunctionalTests{
         todo!();
     }
 
-    /// Setup: Place 2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
+    /// Setup: Place 1.2 ohm (10W+) resistor (e.g. 30J2R0E) between pinpuller terminals
     /// 
     /// Dependencies: pinpuller, pinpuller current sensor, misc ADC
     pub fn pinpuller_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(   
@@ -345,52 +345,53 @@ impl AutomatedPerformanceTests{
         payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
         spi_bus: &mut PayloadSPIController,
         debug_writer: &mut SerialWriter<USCI>) -> [Fxd; 2] {
-    const NUM_MEASUREMENTS: usize = 10;
-    const TEST_RESISTANCE: u32 = 100_000;
-    const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
-    const TEST_START_PERCENT: u32 = 10;
-    const TEST_END_PERCENT: u32 = 100;
-    let mut voltage_accuracy: Fxd = Fxd::ZERO;
-    let mut current_accuracy: Fxd = Fxd::ZERO;
-
-    set_switch_fn(payload, SwitchState::Connected); // connect to exterior
-    for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
-        let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
-        dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);
-
-        // Set cathode voltage
-        set_voltage_fn(payload, set_voltage_mv, spi_bus);
-
-        delay_cycles(100_000); //settling time
         
-        // Read voltage, current
-        let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
-        let measured_current_ua = measure_current_fn(payload, spi_bus);
-        dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
-        dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
+        const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
+        const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
+        const TEST_START_PERCENT: u32 = 10;
+        const TEST_END_PERCENT: u32 = 100;
+        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+        let mut current_accuracy: Fxd = Fxd::ZERO;
 
-        // Calculate expected voltage and current
-        let expected_voltage_mv: i32 = set_voltage_mv as i32;
-        let expected_current_ua: i32 = ((1000 * set_voltage_mv) / (TEST_RESISTANCE + SENSE_RESISTANCE)) as i32;
+        set_switch_fn(payload, SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
+            dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);
 
-        dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
-        dbg_uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua);
+            // Set cathode voltage
+            set_voltage_fn(payload, set_voltage_mv, spi_bus);
 
-        let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
-        let current_rpd = calculate_rpd(measured_current_ua, expected_current_ua);
+            delay_cycles(100_000); //settling time
+            
+            // Read voltage, current
+            let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
+            let measured_current_ua = measure_current_fn(payload, spi_bus);
+            dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
+            dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
 
-        voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
-        current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
-        dbg_uwriteln!(debug_writer, "");
+            // Calculate expected voltage and current
+            let expected_voltage_mv: i32 = set_voltage_mv as i32;
+            let expected_current_ua: i32 = ((1000 * set_voltage_mv) / (TEST_RESISTANCE + SENSE_RESISTANCE)) as i32;
+
+            dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
+            dbg_uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua);
+
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
+            let current_rpd = calculate_rpd(measured_current_ua, expected_current_ua);
+
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+            current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
+            dbg_uwriteln!(debug_writer, "");
+        }
+
+        // Set back to zero
+        set_voltage_fn(payload, supply_min, spi_bus);
+
+        set_switch_fn(payload, SwitchState::Disconnected);
+
+        [voltage_accuracy, current_accuracy]
     }
-
-    // Set back to zero
-    set_voltage_fn(payload, supply_min, spi_bus);
-
-    set_switch_fn(payload, SwitchState::Disconnected);
-
-    [voltage_accuracy, current_accuracy]
-}
     
     /// Setup: 10 ohm resistor across heater+ and heater-
     /// 
@@ -400,16 +401,6 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController, 
             debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
         const NUM_MEASUREMENTS: usize = 10;
-
-        const HEATER_RESISTANCE_MOHMS: u16 = 10_000;
-        const SHUNT_RESISTANCE_MOHMS: u16 = 10;
-        const CIRCUIT_RESISTANCE_MOHMS: u16 = HEATER_RESISTANCE_MOHMS + SHUNT_RESISTANCE_MOHMS; // heater resistance + shunt resistor
-        const HEATER_MAX_POWER_MWATTS: u16 = 1000; // TODO: Verify?
-        const CIRCUIT_LIMITED_MAX_CURRENT_MA: u16 = 
-            ((HEATER_MAX_VOLTAGE_MILLIVOLTS as u32 * 1000) / (CIRCUIT_RESISTANCE_MOHMS as u32)) as u16; 
-        
-        const POWER_LIMITED_MAX_CURRENT_MA: Fxd = fixed_sqrt( Fxd::const_from_int(HEATER_MAX_POWER_MWATTS as i64).unwrapped_div_int(CIRCUIT_RESISTANCE_MOHMS as i64))
-            .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
         
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
         let mut current_accuracy: Fxd = Fxd::ZERO;
@@ -431,8 +422,8 @@ impl AutomatedPerformanceTests{
 
             // Calculate expected voltage and current
             let expected_voltage_mv: u16 = output_voltage_mv;
-            let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / CIRCUIT_RESISTANCE_MOHMS as u32)
-                .min(POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
+            let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / heater_mock::CIRCUIT_RESISTANCE_MOHMS as u32)
+                .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
             dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
 
             let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage_mv as i32);
@@ -447,27 +438,13 @@ impl AutomatedPerformanceTests{
         [voltage_result, current_result]
     }
     
-    /// Setup: Place 2 ohm (10W+) resistor between pinpuller pins. // TODO
+    /// Setup: Place 1.2 ohm (10W+) resistor between pinpuller pins. // TODO
     ///
     /// Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             p_pins: &'a mut PinpullerActivationPins, 
             spi_bus: &'a mut PayloadSPIController) -> PerformanceResult<'a> {
-        
-        const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
-        const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("2");
-        const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
-        const CIRCUIT_RESISTANCE: Fxd = 
-            PINPULLER_MOCK_RESISTANCE
-            .unwrapped_add(SENSE_RESISTANCE)
-            .unwrapped_add(MOSFET_R_ON_RESISTANCE)
-            .unwrapped_add(MOSFET_R_ON_RESISTANCE);
-
-        //const EXPECTED_OFF_CURRENT: u16 = 0; // not used, but for completeness
-        const EXPECTED_ON_CURRENT: Fxd = 
-            Fxd::const_from_int(PINPULLER_VOLTAGE_MILLIVOLTS as i64)
-            .unwrapped_div(CIRCUIT_RESISTANCE);
         
         let mut accuracy: Fxd = Fxd::ZERO;
 
@@ -482,7 +459,7 @@ impl AutomatedPerformanceTests{
             pin.set_high().ok();
             let measured_current = payload.get_pinpuller_current_milliamps(spi_bus);
             accuracy = in_place_average(accuracy, 
-                calculate_rpd(measured_current as i32, EXPECTED_ON_CURRENT.to_num()), 
+                calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num()), 
                 n as u16);
             pin.set_low().ok();
             delay_cycles(1000);
@@ -491,9 +468,6 @@ impl AutomatedPerformanceTests{
         calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
     }    
 }
-
-const DEFAULT_SUCCESS: Fxd = Fxd::lit("0.05");
-const DEFAULT_INACC: Fxd = Fxd::lit("0.2");
 
 /// Tests that require human intervention. These are pass/fail tests.
 pub struct ManualFunctionalTests{}
@@ -536,33 +510,25 @@ impl ManualFunctionalTests{
     // Dependencies: pinpuller
     pub fn pinpuller_functional_test <'a, USCI: SerialUsci> (pins: &mut PinpullerActivationPins, serial_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI>) -> [PerformanceResult<'a>; 4] {
         // Enable each of the four redundant lines.
-        const EXPECTED_OFF_CURRENT: u16 = 0;
-        let mosfet_r_on_resistance: Fxd = Fxd::lit("0.03"); // Verify(?)
-        let pinpuller_mock_resistance: Fxd = Fxd::lit("2");
-        let sense_resistance: Fxd = Fxd::lit("0.4");
-        const NUM_PINS: usize = 4;
-        let expected_on_current: u16 = (Fxd::from(PINPULLER_VOLTAGE_MILLIVOLTS) / (pinpuller_mock_resistance + sense_resistance + mosfet_r_on_resistance*2)).to_num();
         
         let mut pin_arr: [(&mut dyn OutputPin<Error=void::Void>, &str); 4] = [
-            (&mut pins.burn_wire_1,          "Burn Wire 1 only active"),
-            (&mut pins.burn_wire_2,          "Burn Wire 2 only active"),
-            (&mut pins.burn_wire_1_backup,   "Burn Wire 1 backup only active"),
-            (&mut pins.burn_wire_2_backup,   "Burn Wire 2 backup only active"),
+            (&mut pins.burn_wire_1,          "Burn Wire 1"),
+            (&mut pins.burn_wire_2,          "Burn Wire 2"),
+            (&mut pins.burn_wire_1_backup,   "Burn Wire 1 backup"),
+            (&mut pins.burn_wire_2_backup,   "Burn Wire 2 backup"),
         ];
         let mut result: [PerformanceResult; 4] = Default::default();
         // Manually check resistance(?) across pinpuller pins
         for (n, (pin, name)) in pin_arr.iter_mut().enumerate(){
             pin.set_high().ok();
             let measured = read_num(serial_writer, serial_reader);
-            uwriteln!(serial_writer, "Burn Wire Active {}", name).ok();
-            uwriteln!(serial_writer, "Please Enter Current:").ok();
+            uwriteln!(serial_writer, "{} active.", name).ok();
+            uwriteln!(serial_writer, "Please enter current:").ok();
             pin.set_low().ok();
             delay_cycles(1000);
-            result[n] = calculate_performance_result(name, calculate_rpd(measured, expected_on_current as i32), 5, 20);
+            result[n] = calculate_performance_result(name, calculate_rpd(measured, pinpuller_mock::EXPECTED_ON_CURRENT.to_num()), 5, 20);
         }
         result
-        
-
     }
     /*
     // Dependencies: LMS power switches
@@ -574,15 +540,39 @@ impl ManualFunctionalTests{
         // Query user for resistance 
         // Return true if resistance less than 1-10 ohms
         todo!();
-    }
-    // Dependencies: pinpuller
-    pub fn pinpuller_sense_functional_test() -> SensorResult {
-        // Read pinpuller sense lines
-        // Short pinpuller sense lines
-        // Read pinpuller sense lines again
-        // Return true if different
-        todo!();
     }*/
+}
+
+/// Values associated with mock pinpuller tests
+mod pinpuller_mock {
+    use super::{Fxd, PINPULLER_VOLTAGE_MILLIVOLTS};
+
+    const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
+    const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("1.2");
+    const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
+    const CIRCUIT_RESISTANCE: Fxd = 
+        PINPULLER_MOCK_RESISTANCE
+        .unwrapped_add(SENSE_RESISTANCE)
+        .unwrapped_add(MOSFET_R_ON_RESISTANCE)
+        .unwrapped_add(MOSFET_R_ON_RESISTANCE);
+    const NUM_PINS: usize = 4;
+    pub const EXPECTED_ON_CURRENT: Fxd = 
+        Fxd::const_from_int(PINPULLER_VOLTAGE_MILLIVOLTS as i64) 
+        .unwrapped_div(CIRCUIT_RESISTANCE);
+}
+
+/// Values associated with mock heater tests
+mod heater_mock {
+    use super::{Fxd, fixed_sqrt};
+
+    const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 10_000;
+    const PROBE_RESISTANCE_MOHMS: u16 = 90;
+    pub const CIRCUIT_RESISTANCE_MOHMS: u16 = MOCK_HEATER_RESISTANCE_MOHMS + super::HEATER_SENSE_RESISTANCE_MILLIOHMS as u16; // heater resistance + shunt resistor
+    pub const CIRCUIT_AND_PROBE_RESISTANCE_MOHMS: u16 = CIRCUIT_RESISTANCE_MOHMS + PROBE_RESISTANCE_MOHMS;
+    const HEATER_MAX_POWER_MWATTS: u16 = 1000; // TODO: Verify?
+    
+    pub const POWER_LIMITED_MAX_CURRENT_MA: Fxd = fixed_sqrt( Fxd::const_from_int(HEATER_MAX_POWER_MWATTS as i64).unwrapped_div_int(CIRCUIT_RESISTANCE_MOHMS as i64))
+        .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
 }
 
 fn test_temperature_sensors_against_known_temp<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
@@ -621,14 +611,6 @@ const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 pub struct ManualPerformanceTests{}
 impl ManualPerformanceTests{
     /*
-    // Dependencies: Isolated 5V supply, Tether ADC, signal processing circuitry, isolators
-    pub fn test_repeller() -> PerformanceResult {
-        // Manually set repeller voltage (setup TBD)
-        // Read repeller voltage
-        // Calculate expected voltage
-        // Return success if error within 10%
-        todo!();
-    }
     // Dependencies: Isolated 5V supply, Tether ADC, isolators
     pub fn test_tether_adc() -> PerformanceResult {
         // Manually apply known voltage to channel.
@@ -638,6 +620,13 @@ impl ManualPerformanceTests{
     }
     // Dependencies: Temperature ADC
     pub fn test_temperature_adc() -> PerformanceResult {
+        // Manually apply known voltage to channel.
+        // Ask to read channel X.
+        // Return success if SPI packet valid and accuracy within 10%
+        todo!();
+    }
+    // Dependencies: Misc ADC
+    pub fn test_misc_adc() -> PerformanceResult {
         // Manually apply known voltage to channel.
         // Ask to read channel X.
         // Return success if SPI packet valid and accuracy within 10%
@@ -675,15 +664,7 @@ impl ManualPerformanceTests{
         }
         result_arr
     }
-    /*
-    // Dependencies: Misc ADC
-    pub fn test_misc_adc() -> PerformanceResult {
-        // Manually apply known voltage to channel.
-        // Ask to read channel X.
-        // Return success if SPI packet valid and accuracy within 10%
-        todo!();
-    }
-    */
+
     /// Dependencies: Isolated 5V supply, DAC, isolators
     pub fn test_dac<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
         payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
@@ -750,40 +731,39 @@ impl ManualPerformanceTests{
         spi_bus: &'a mut PayloadSPIController,
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
-    const NUM_MEASUREMENTS: usize = 10;
-    const TEST_RESISTANCE: u32 = 100_000;
-    let mut voltage_accuracy: Fxd = Fxd::ZERO;
-
-    payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-    for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-        let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) 
-                                         + output_percentage *(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS)) / 100;
-        uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
-
-        // Set cathode voltage
-        payload.set_cathode_offset_voltage(output_voltage_mv, spi_bus);
-
-        delay_cycles(10000); //settling time
         
-        // Read cathode voltage, current
-        uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-        let measured_voltage_mv = read_num(debug_writer, serial_reader);
-        uwriteln!(debug_writer, "").ok();
+        const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
+        let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
-        let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
-        uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u32 = ((100-output_percentage)*(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS) 
+                                            + output_percentage *(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS)) / 100;
+            uwriteln!(debug_writer, "Target output voltage: {}mV", output_voltage_mv).ok();
 
-        voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
-    }
+            // Set cathode voltage
+            payload.set_cathode_offset_voltage(output_voltage_mv, spi_bus);
 
-    // Set back to zero
-    payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+            delay_cycles(10000); //settling time
+            
+            // Read cathode voltage, current
+            uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
+            let measured_voltage_mv = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
 
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
+            uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
 
-    payload.set_cathode_offset_switch(SwitchState::Disconnected);
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+        }
 
-    let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
-    voltage_result
+        // Set back to zero
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
+        voltage_result
     }
 
     pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
@@ -819,7 +799,6 @@ impl ManualPerformanceTests{
 
         // Set back to zero
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
-
         payload.set_tether_bias_switch(SwitchState::Disconnected);
 
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
@@ -830,8 +809,8 @@ impl ManualPerformanceTests{
         spi_bus: &'a mut PayloadSPIController, 
         debug_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI>) -> PerformanceResult<'a> {
+        
         const NUM_MEASUREMENTS: usize = 10;
-
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
@@ -863,12 +842,7 @@ impl ManualPerformanceTests{
         serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
-        let probe_resistance: Fxd = Fxd::lit("0.09");   // 90 mohms 
-        let cathode_resistance= Fxd::lit("10");      // 10 ohms
-        let shunt_resistance = Fxd::lit("0.01");     // 10 mohms
-        let circuit_resistance = cathode_resistance + probe_resistance + shunt_resistance;
-    
-        let power_limited_max_current_ma = Fxd::lit("314.66"); //314.66mA = 1000 * sqrt(heater_max_power / circuit_resistance);
+        
         let mut current_accuracy: Fxd = Fxd::ZERO;
     
         for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
@@ -882,9 +856,9 @@ impl ManualPerformanceTests{
             delay_cycles(100_000); //settling time
     
             // Calculate expected voltage and current
-            let expected_voltage_mv: u16 = output_voltage_mv; // assume zero error between target voltage and actual voltage
-            let expected_current_ma: i16 = (Fxd::from(expected_voltage_mv) / circuit_resistance)
-                .min(power_limited_max_current_ma).to_num();
+            let expected_voltage_mv: u32 = output_voltage_mv as u32; // assume zero error between target voltage and actual voltage
+            let expected_current_ma: i16 = ((1000*expected_voltage_mv) / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as u32))
+                .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
             dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
     
             //Manually measure the current
@@ -906,6 +880,8 @@ impl ManualPerformanceTests{
         );
         current_result
     }
+
+
 }
 
 /// Functional test result.
