@@ -819,14 +819,15 @@ impl ManualPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv, spi_bus);
 
-            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
-            delay_cycles(100_000); //settling time
+            uwriteln!(debug_writer, "Target set to: {}mV", output_voltage_mv).ok();
 
             uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-            let measured_voltage_mv = read_num(debug_writer, serial_reader);
+            let actual_voltage_mv = read_num(debug_writer, serial_reader);
             uwriteln!(debug_writer, "").ok();
 
-            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
+            let measured_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+
+            let voltage_rpd = calculate_rpd(measured_voltage_mv as i32, actual_voltage_mv);
             uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
         }
@@ -855,19 +856,23 @@ impl ManualPerformanceTests{
             uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
             delay_cycles(100_000); //settling time
     
-            // Calculate expected voltage and current
+            // Calculate expected voltage and current (only for reference)
             let expected_voltage_mv: u32 = output_voltage_mv as u32; // assume zero error between target voltage and actual voltage
             let expected_current_ma: i16 = ((1000*expected_voltage_mv) / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as u32))
                 .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
             dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
+
+            // Measure current
+            let measured_current_ma: i16 = payload.get_heater_current_milliamps(spi_bus);
+            dbg_uwriteln!(debug_writer, "Measured current is: {}mA", measured_current_ma);
     
             //Manually measure the current
-            uwrite!(debug_writer,"Measure current across cathode substitute and input (in mA): ").ok();
-            let measured_current_ma = read_num(debug_writer, serial_reader);
+            uwrite!(debug_writer,"Measure current and input (in mA): ").ok();
+            let actual_current_ma = read_num(debug_writer, serial_reader);
             uwriteln!(debug_writer, "").ok();
     
             //Determine accuracy
-            let current_rpd = calculate_rpd(measured_current_ma, expected_current_ma as i32);
+            let current_rpd = calculate_rpd(measured_current_ma as i32, actual_current_ma);
             uwriteln!(debug_writer,"Calculated current millirpd: {}", (current_rpd * 1000).to_num::<i32>()).ok();
             current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
         }
