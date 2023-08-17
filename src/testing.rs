@@ -438,7 +438,7 @@ impl AutomatedPerformanceTests{
         [voltage_result, current_result]
     }
     
-    /// Setup: Place 1.2 ohm (10W+) resistor between pinpuller pins. // TODO
+    /// Setup: Place 1.2 ohm (10W+) resistor between pinpuller pins.
     ///
     /// Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
@@ -885,7 +885,7 @@ impl ManualPerformanceTests{
         );
         current_result
     }
-    /// Setup: Place 2 ohm (10W+) resistor between pinpuller pins.
+    /// Setup: Place 1.2 ohm (10W+) resistor between pinpuller pins.
     ///
     /// Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     pub fn test_pinpuller_current<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI: SerialUsci>(
@@ -894,33 +894,21 @@ impl ManualPerformanceTests{
         spi_bus: &'a mut PayloadSPIController,
         serial_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI>,) -> PerformanceResult<'a> {
-    
-        let mut accuracy: Fxd = Fxd::ZERO;
-
-        // For each pin, activate the pinpuller through that channel and measure the current
-        let mut pin_list: [&mut dyn OutputPin<Error = void::Void>; 4] = [
-            &mut p_pins.burn_wire_1, 
-            &mut p_pins.burn_wire_1_backup, 
-            &mut p_pins.burn_wire_2, 
-            &mut p_pins.burn_wire_2_backup];
         
-        for (n, pin) in pin_list.iter_mut().enumerate() {
-            pin.set_high().ok();
+        let mut accuracy: Fxd = Fxd::ZERO;
+        
+        // TODO: Pick one channel. Do all testing with that one channel.
 
-            uwrite!(serial_writer,"Measure current and input (in mA): ").ok();
-            let actual_current_ma = read_num(serial_writer, serial_reader);
-            uwriteln!(serial_writer, "").ok();
+        // TODO: Loop over, say, 10 voltages
 
-            let measured_current_ma = payload.get_pinpuller_current_milliamps(spi_bus);
-            
-            accuracy = in_place_average(accuracy, 
-                calculate_rpd(measured_current_ma as i32, actual_current_ma), 
-                n as u16);
-            pin.set_low().ok();
-            delay_cycles(1000);
-        }
+        // TODO: Ask user to set a voltage on the benchtop supply for the 3V3_BUS line.
 
-        calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
+        // TODO: Calculate expected current (I=V/R)
+        
+        // TODO: Measure current using payload
+
+        //TODO: Calculate RPD and accuracy
+        PerformanceResult::default()
     }    
 
 }
