@@ -62,7 +62,7 @@ fn main() -> ! {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -89,16 +89,18 @@ fn main() -> ! {
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-        let mut payload = payload.into_enabled_heater();
+        // payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        // let mut payload = payload.into_enabled_heater();
+        // lms_control_pins.lms_led_enable.toggle().ok();
+        // lms_control_pins.lms_receiver_enable.toggle().ok();
         
-        AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
+        // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
         ManualPerformanceTests::thermal_chamber_temp_sensors_test(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
         
-        let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        // let mut payload = payload.into_disabled_heater().into_disabled_payload();
         idle_loop(&mut led_pins);
     }
     else {#[allow(clippy::empty_loop)] loop{}}

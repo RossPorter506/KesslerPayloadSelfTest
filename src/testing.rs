@@ -885,10 +885,10 @@ impl ManualPerformanceTests{
         // INFINITE loop so manually turn off power supply to exit loop.
         loop{
             for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
-                let tempr = payload.get_temperature_kelvin(sensor, spi_bus);
+                let tempr = payload.get_temperature_kelvin(sensor, spi_bus) as i16;
                 uwrite!(debug_writer, "{}: ", name).ok();
-                uwriteln!(debug_writer, "{}", tempr - CELCIUS_TO_KELVIN_OFFSET).ok();     
-            }  
+                uwriteln!(debug_writer, "{}", tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
+            }              
             uwriteln!(debug_writer, "").ok();
             delay_cycles(1_000_000);
         }        
