@@ -895,19 +895,34 @@ impl ManualPerformanceTests{
         serial_writer: &mut SerialWriter<USCI>,
         serial_reader: &mut Rx<USCI>,) -> PerformanceResult<'a> {
         
-        let mut accuracy: Fxd = Fxd::ZERO;
-        
-        // TODO: Pick one channel. Do all testing with that one channel.
+            let mut current_accuracy: Fxd = Fxd::ZERO;            
+            let mut expected_current_ma: i16;
+            let mut measured_current_ma: i16;
+            let voltage_values_mv: [i16; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
+            let rp_sense: i16 = 82;         
+            let r122: i16 = 400;            
+            let wirewound_res: i16 = 1200;  // Measure resistance with multimeter
+            let total_resistance = rp_sense + r122 + wirewound_res; // Units: mOhms
+            
+            // Select burn wire 1 to form current loop.        
+            p_pins.burn_wire_1.set_high().ok();
 
-        // TODO: Loop over, say, 10 voltages
+            // Loop over 10 voltages (in mV: 400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300)     
+            for (i, set_voltage) in voltage_values_mv.iter().enumerate(){
+                // Asking user to set required voltage
+                uwriteln!(serial_writer, "Set voltage on power supply to {} mV. Once set, press any key to continue", set_voltage).ok();
+                wait_for_any_packet(serial_reader);
 
-        // TODO: Ask user to set a voltage on the benchtop supply for the 3V3_BUS line.
+                // Measure and compare current (expected vs measured)
+                expected_current_ma = set_voltage/total_resistance;
+                measured_current_ma = payload.get_pinpuller_current_milliamps(spi_bus) as i16;
+                uwriteln!(serial_writer, "Expected current is {} mA", expected_current_ma).ok();
+                uwriteln!(serial_writer, "Measured current is {} mA", measured_current_ma).ok();
 
-        // TODO: Calculate expected current (I=V/R)
-        
-        // TODO: Measure current using payload
-
-        //TODO: Calculate RPD and accuracy
+                let current_rpd = calculate_rpd(measured_current_ma as i32, expected_current_ma as i32);
+                uwriteln!(serial_writer, "Calculated current millirpd: {}", (current_rpd*1000).to_num::<i32>()).ok();
+                current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);    
+            }
         PerformanceResult::default()
     }    
 
