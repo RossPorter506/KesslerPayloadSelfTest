@@ -900,9 +900,10 @@ impl ManualPerformanceTests{
             let mut measured_current_ma: i16;
             let voltage_values_mv: [i16; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
             let rp_sense: i16 = 82;         
-            let r122: i16 = 400;            
+            let r122: i16 = 400;        
+            let probe_resistance: i16 = 10; // Measure resistance with multimeter
             let wirewound_res: i16 = 1200;  // Measure resistance with multimeter
-            let total_resistance = rp_sense + r122 + wirewound_res; // Units: mOhms
+            let total_resistance = rp_sense + r122 + wirewound_res + probe_resistance; // Units: mOhms
             
             // Select burn wire 1 to form current loop.        
             p_pins.burn_wire_1.set_high().ok();
@@ -913,13 +914,20 @@ impl ManualPerformanceTests{
                 uwriteln!(serial_writer, "Set voltage on power supply to {} mV. Once set, press any key to continue", set_voltage).ok();
                 wait_for_any_packet(serial_reader);
 
-                // Measure and compare current (expected vs measured)
+                // Obtain expected (I = V/R) and measured current in mA
                 expected_current_ma = set_voltage/total_resistance;
                 measured_current_ma = payload.get_pinpuller_current_milliamps(spi_bus) as i16;
+                // User inputs actual current from manual measurement
+                uwrite!(serial_writer,"Measure current and input (in mA): ").ok();
+                let actual_current_ma = read_num(serial_writer, serial_reader) as i16;  
+
+                // Print results
                 uwriteln!(serial_writer, "Expected current is {} mA", expected_current_ma).ok();
                 uwriteln!(serial_writer, "Measured current is {} mA", measured_current_ma).ok();
+                uwriteln!(serial_writer, "Actual current is {} mA", actual_current_ma).ok();
 
-                let current_rpd = calculate_rpd(measured_current_ma as i32, expected_current_ma as i32);
+                // Calculate RPD and accuracy
+                let current_rpd = calculate_rpd(measured_current_ma as i32, actual_current_ma as i32);
                 uwriteln!(serial_writer, "Calculated current millirpd: {}", (current_rpd*1000).to_num::<i32>()).ok();
                 current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);    
             }
