@@ -10,23 +10,9 @@ use crate::serial::{SerialWriter, wait_for_any_packet};
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use crate::serial::read_num;
+use crate::serial::{read_num, TextColours::*};
+use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
-
-//Macros to only print if debug_print feature is enabled
-macro_rules! dbg_uwriteln {
-    ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug_print")]
-        {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
-    }
-}
-#[allow(unused_macros)]
-macro_rules! dbg_uwrite {
-    ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug_print")]
-        {uwrite!($first, "[....] ").ok(); uwrite!($first, $( $($rest)* )*).ok();}
-    }
-}
 
 // We use this type a lot. 
 /// 64 bits long, 32 fractional bits, signed. 
@@ -969,6 +955,43 @@ impl ManualPerformanceTests{
         PerformanceResult::default()
     }    
 
+
+    pub fn thermal_chamber_temp_sensors_test<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+        payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
+        spi_bus: &mut PayloadSPIController, 
+        debug_writer: &'a mut SerialWriter<USCI>,
+        serial_reader: &'a mut Rx<USCI>) -> ! { // Does not return
+    
+        const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
+            (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
+            (LMS_RECEIVER_TEMPERATURE_SENSOR,       "LMS Receiver"),
+            (MSP430_TEMPERATURE_SENSOR,             "MSP430"),
+            (HEATER_SUPPLY_TEMPERATURE_SENSOR,      "Heater supply"),
+            (HVDC_SUPPLIES_TEMPERATURE_SENSOR,      "HVDC Supplies"),
+            (TETHER_MONITORING_TEMPERATURE_SENSOR,  "Tether monitoring"),
+            (TETHER_CONNECTOR_TEMPERATURE_SENSOR,   "Tether connector"),
+            (MSP_3V3_TEMPERATURE_SENSOR,            "MSP 3V3 supply"),
+        ];    
+        
+        // Prompt to setup thermal chamber
+        uwriteln!(debug_writer, "Thermal Chamber Test").ok();
+        uwriteln!(debug_writer, "--------------------").ok();
+        uwriteln!(debug_writer, "Press any key to begin reading temperatures and then begin thermal chamber cycling").ok();
+        wait_for_any_packet(serial_reader);
+
+        // Loop to continuously read temperature values
+        // 8 temperature sensor values will be printed every second or so
+        // INFINITE loop so manually turn off power supply to exit loop.
+        loop{
+            for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
+                let tempr = payload.get_temperature_kelvin(sensor, spi_bus) as i16;
+                uwrite!(debug_writer, "{}: ", name).ok();
+                uwriteln!(debug_writer, "{}", tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
+            }              
+            uwriteln!(debug_writer, "").ok();
+            delay_cycles(1_000_000);
+        }        
+    }
 }
 
 /// Functional test result.
@@ -979,11 +1002,12 @@ pub struct SensorResult<'a> {
 // Define how to print a SensorResult
 impl ufmt::uDisplay for SensorResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
-        let result = match self.result {
-            true => " OK ",
-            false => "FAIL"};
+        uwrite!(f, "[").ok();
+        match self.result {
+            true => uwrite_coloured!(f, " OK ", Green),
+            false => uwrite_coloured!(f, "FAIL", Red)};
 
-        uwrite!(f, "[{}] {}", result, self.name).ok();
+        uwrite!(f, "] {}", self.name).ok();
         Ok(())
     }
 }
@@ -1003,13 +1027,14 @@ impl PerformanceResult<'_>{
 // Define how to print a PerformanceResult
 impl ufmt::uDisplay for PerformanceResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
-        let result = match self.performance {
-            Performance::Nominal    => " OK ",
-            Performance::Inaccurate => "INAC",
-            Performance::NotWorking => "FAIL"};
+        uwrite!(f, "[").ok();
+        match self.performance {
+            Performance::Nominal    => uwrite_coloured!(f, " OK ", Green),
+            Performance::Inaccurate => uwrite_coloured!(f, "INAC", Yellow),
+            Performance::NotWorking => uwrite_coloured!(f, "FAIL", Red),};
         let percent_acc: i32 = (self.accuracy*100).to_num();
         let fractional_percent: i32 = (self.accuracy*10000).to_num::<i32>() - percent_acc*100;
-        uwrite!(f, "[{}] {}, {}.{}% error", result, self.name, percent_acc, fractional_percent).ok();
+        uwrite!(f, "] {}, {}.{}% error", self.name, percent_acc, fractional_percent).ok();
         Ok(())
     }
 }

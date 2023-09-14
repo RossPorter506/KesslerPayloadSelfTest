@@ -34,7 +34,7 @@ lto = "fat"
 strip = "debuginfo" # Replace with 'true' to make final executable smaller, but unable to analyze with cargo bloat.
 
 [profile.dev]
-opt-level = "s"
+opt-level = "z"
 codegen-units = 1
 lto = "fat"
 debug = true

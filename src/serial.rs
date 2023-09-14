@@ -3,6 +3,40 @@ use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
 use ufmt::{uWrite, uwrite, uwriteln};
 use void::Void;
 
+//Macros to only print if debug_print feature is enabled
+#[macro_export]
+macro_rules! dbg_uwriteln {
+    ($first:tt $(, $( $rest:tt )* )?) => {    
+        #[cfg(feature = "debug")]
+        {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
+    }
+}
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! dbg_uwrite {
+    ($first:tt $(, $( $rest:tt )* )?) => {    
+        #[cfg(feature = "debug")]
+        {uwrite!($first, "[....] ").ok(); uwrite!($first, $( $($rest)* )*).ok();}
+    }
+}
+
+// Colour printing
+#[macro_export]
+macro_rules! uwrite_coloured {    
+    ($a:expr, $b:expr, $c:expr) => {
+        match $c{
+            $crate::serial::TextColours::Red => uwrite!($a, "\x1b[31m{}\x1b[0m", $b).ok(),
+            $crate::serial::TextColours::Green => uwrite!($a, "\x1b[32m{}\x1b[0m", $b).ok(),  
+            $crate::serial::TextColours::Yellow => uwrite!($a, "\x1b[33m{}\x1b[0m", $b).ok(),
+        }
+    }
+}
+pub enum TextColours {
+    Red, 
+    Green, 
+    Yellow,
+}
+
 pub struct SerialWriter<USCI: SerialUsci>{
     serial: Tx<USCI>
 }
