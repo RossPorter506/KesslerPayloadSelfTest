@@ -379,7 +379,7 @@ impl AutomatedPerformanceTests{
         }
 
         // Set back to zero
-        set_voltage_fn(payload, supply_min, spi_bus);
+        set_voltage_fn(payload, (supply_min+supply_max)/100, spi_bus);
 
         set_switch_fn(payload, SwitchState::Disconnected);
 
