@@ -7,7 +7,7 @@ use void::Void;
 #[macro_export]
 macro_rules! dbg_uwriteln {
     ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "debug_print")]
         {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
     }
 }
@@ -15,7 +15,7 @@ macro_rules! dbg_uwriteln {
 #[macro_export]
 macro_rules! dbg_uwrite {
     ($first:tt $(, $( $rest:tt )* )?) => {    
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "debug_print")]
         {uwrite!($first, "[....] ").ok(); uwrite!($first, $( $($rest)* )*).ok();}
     }
 }
