@@ -146,7 +146,8 @@ pub mod sensor_equations {
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-        ((v_adc_millivolts as u32 * 1000) / 1804) as u16
+        // 832/625 offset added to tune pinpuller
+        ((v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625)) as u16
     }
 
     //Returns temperature in Kelvin

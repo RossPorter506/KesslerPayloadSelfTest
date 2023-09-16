@@ -898,15 +898,17 @@ impl ManualPerformanceTests{
             let mut current_accuracy: Fxd = Fxd::ZERO;            
             let mut expected_current_ma: i16;
             let mut measured_current_ma: i16;
-            let voltage_values_mv: [i16; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
-            let rp_sense: i16 = 82;         
-            let r122: i16 = 400;        
-            let probe_resistance: i16 = 10; // Measure resistance with multimeter
-            let wirewound_res: i16 = 1200;  // Measure resistance with multimeter
-            let total_resistance = rp_sense + r122 + wirewound_res + probe_resistance; // Units: mOhms
+            let voltage_values_mv: [i32; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
+            let rp_sense: i32 = 82;         
+            let r122: i32 = 400;        
+            let probe_resistance: i32 = 10; // Measure resistance with multimeter
+            let wirewound_res: i32 = 1200;  // Measure resistance with multimeter
+            let mosfets: i32 = 27*2;
+            let wire_resistance: i32 = 130 + 320;
+            let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms
             
             // Select burn wire 1 to form current loop.        
-            p_pins.burn_wire_1.set_high().ok();
+            p_pins.burn_wire_2.set_high().ok();
 
             // Loop over 10 voltages (in mV: 400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300)     
             for (i, set_voltage) in voltage_values_mv.iter().enumerate(){
@@ -915,7 +917,7 @@ impl ManualPerformanceTests{
                 wait_for_any_packet(serial_reader);
 
                 // Obtain expected (I = V/R) and measured current in mA
-                expected_current_ma = set_voltage/total_resistance;
+                expected_current_ma = ((set_voltage*1000)/total_resistance) as i16;
                 measured_current_ma = payload.get_pinpuller_current_milliamps(spi_bus) as i16;
                 // User inputs actual current from manual measurement
                 uwrite!(serial_writer,"Measure current and input (in mA): ").ok();
@@ -931,6 +933,7 @@ impl ManualPerformanceTests{
                 uwriteln!(serial_writer, "Calculated current millirpd: {}", (current_rpd*1000).to_num::<i32>()).ok();
                 current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);    
             }
+
         PerformanceResult::default()
     }    
 
