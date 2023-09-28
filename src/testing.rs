@@ -183,11 +183,12 @@ impl AutomatedFunctionalTests{
         let mut on_counts: [u16; 3] = [0; 3];
 
         // Enable phototransistors
+        lms_control.lms_led_enable.set_low().ok();
         lms_control.lms_receiver_enable.set_high().ok();
         delay_cycles(100_000);
 
         // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
+        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
             ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
         }
         dbg_uwriteln!(serial_writer, "Read ambient counts as: {:?}", ambient_counts);
@@ -197,7 +198,7 @@ impl AutomatedFunctionalTests{
         delay_cycles(100_000);
 
         // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_2_SENSOR].iter().enumerate() {
+        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
             on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
         }
         dbg_uwriteln!(serial_writer, "Read max counts as: {:?}", on_counts);
@@ -354,6 +355,7 @@ impl AutomatedPerformanceTests{
 
             // Set cathode voltage
             set_voltage_fn(payload, set_voltage_mv, spi_bus);
+            dbg_uwriteln!(debug_writer, "Set target voltage");
 
             delay_cycles(100_000); //settling time
             
