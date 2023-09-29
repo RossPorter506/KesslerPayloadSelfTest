@@ -3,6 +3,8 @@
 # runner = "msp430-elf-gdb -q -x mspdebug.gdb"
 # For running
 runner = "./run.bat"
+# UNCOMMENT ON LINUX
+#runner = "./run.sh"
 
 rustflags = [
     "-C", "link-arg=-nostartfiles",
@@ -18,6 +20,8 @@ rustflags = [
 
 [build]
 target = "msp430-none-elf"
+# UNCOMMENT ON LINUX TO ADD msp430-gcc TO PATH
+#rustc-wrapper = "./rustc_wrapper.sh"
 
 [unstable]
 # MSP430 doesn't come with libcore compiled already. But when it does, this

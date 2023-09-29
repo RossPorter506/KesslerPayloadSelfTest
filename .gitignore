@@ -5,8 +5,8 @@ Cargo.lock
 
 src/PCBTestRust.code-workspace
 
-uniflash/
+/uniflash
 
-msp430-gcc/
+/msp430-gcc
 
 .metadata/
