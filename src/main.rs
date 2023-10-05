@@ -52,7 +52,7 @@ fn main() -> ! {
             mut payload_peripheral_cs_pins, 
             debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
         
-        lms_control_pins.lms_led_enable.set_high().ok();
+        lms_control_pins.lms_led_enable.set_low().ok();
         led_pins.green_led.toggle().ok();
         payload_peripheral_cs_pins.dac.set_high().ok();
         payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
