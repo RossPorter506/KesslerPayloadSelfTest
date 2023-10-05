@@ -547,7 +547,7 @@ mod pinpuller_mock {
     const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
     const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("1.2");
     const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
-    const CIRCUIT_RESISTANCE: Fxd = 
+    pub const CIRCUIT_RESISTANCE: Fxd = 
         PINPULLER_MOCK_RESISTANCE
         .unwrapped_add(SENSE_RESISTANCE)
         .unwrapped_add(MOSFET_R_ON_RESISTANCE)
@@ -939,22 +939,51 @@ impl ManualPerformanceTests{
         p_pins: &'a mut PinpullerActivationPins, 
         spi_bus: &'a mut PayloadSPIController,
         serial_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,) -> PerformanceResult<'a> {
-        
-        let mut accuracy: Fxd = Fxd::ZERO;
-        
-        // TODO: Pick one channel. Do all testing with that one channel.
+        serial_reader: &mut Rx<USCI>,
+    ) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 10;
 
-        // TODO: Loop over, say, 10 voltages
+        let mut current_accuracy: Fxd = Fxd::ZERO;
 
-        // TODO: Ask user to set a voltage on the benchtop supply for the 3V3_BUS line.
+        // Pick one channel. Do all testing with that one channel.
+        let pinpuller_pin = &mut p_pins.burn_wire_1;
 
-        // TODO: Calculate expected current (I=V/R)
-        
-        // TODO: Measure current using payload
+        uwriteln!(serial_writer, "Pin puller Current Test").ok();
+        uwriteln!(serial_writer, "--------------------").ok();
 
-        //TODO: Calculate RPD and accuracy
-        PerformanceResult::default()
+        // Loop over, say, 10 voltages from 0V to 3.3V
+        for (i, voltage_mv) in (0u16..=3300u16).step_by(3300 / NUM_MEASUREMENTS).enumerate() {
+            // Ask user to set a voltage on the benchtop supply for the 3V3_BUS line.
+            uwriteln!(serial_writer, "Set the voltage on the benchtop supply for the 3V3_BUS line to V = {} mV, then press any key to continue.", voltage_mv).ok();
+
+            // Calculate expected current (I=V/R)
+            let expected_current_ma = (Fxd::from(voltage_mv) / pinpuller_mock::CIRCUIT_RESISTANCE).to_num();
+
+            wait_for_any_packet(serial_reader);
+
+            dbg_uwriteln!(serial_writer, "Expected current is: {}mA", expected_current_ma);
+
+            pinpuller_pin.set_high().ok();
+
+            // Measure current using payload
+            let measured_current_ma = payload.get_pinpuller_current_milliamps(spi_bus);
+            dbg_uwriteln!(serial_writer, "Measured current is: {}mA", measured_current_ma);
+
+            pinpuller_pin.set_low().ok();
+
+            // Calculate RPD and accuracy
+            let current_rpd = calculate_rpd(measured_current_ma as i32, expected_current_ma);
+            uwriteln!(serial_writer,"Calculated current millirpd: {}", (current_rpd * 1000).to_num::<i32>()).ok();
+            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+        }
+
+        let current_result = calculate_performance_result(
+            "Pinpuller current",
+            current_accuracy,
+            5,
+            20,
+        );
+        current_result
     }    
 
 
