@@ -1,6 +1,6 @@
 use embedded_hal::serial::{Write, Read};
 use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
-use ufmt::{uWrite, uwrite, uwriteln};
+use ufmt::{uWrite, uwrite, uwriteln, uDisplay};
 use void::Void;
 
 //Macros to only print if debug_print feature is enabled
@@ -60,6 +60,53 @@ impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
             self.write_char(chr).ok();
         }
         Ok(())
+    }
+}
+
+/*  Fixed point numbers from the 'fixed' library do not implement uDisplay from the 'ufmt' library
+    We can't implement an external trait on an external struct.
+    Instead, we make a trait Printable which can be implemented on fixed numbers by calling x.to_prnt()
+    This trait returns a newtype PrintableFixedI64 which can implement uDisplay, since it's defined inside this project
+*/
+struct PrintableFixedI64<const N: i32>(fixed::FixedI64::<N>);
+impl<const N: i32> uDisplay for PrintableFixedI64<N> {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where W: uWrite + ?Sized {
+        let frac_bits = fixed::FixedI64::<N>::FRAC_BITS;
+        let frac_mask: u64 = (1 << frac_bits) - 1;
+
+        let mut fxd = self.0;
+            
+        let sign = if fxd < 0 {'-'} else {'+'};
+
+        // Fractional bits are always positive, even for negative numbers. Make the number positive so they make sense
+        if sign == '-' {fxd *= -1;} 
+
+        let int: i32 = fxd.to_num();
+        uwrite!(f, "{}{}", sign, int).ok();
+
+        let mut frac: u64 = (fxd.frac().to_bits() as u64) & frac_mask;
+
+        if frac != 0 { uwrite!(f, ".").ok(); }
+
+        let mut precision = 0;
+        while frac != 0 && precision < 10 {
+            frac *= 10;
+            let digit = frac >> frac_bits;
+            uwrite!(f, "{}", digit).ok();
+            frac &= frac_mask;
+            precision += 1;
+        }
+        Ok(())
+    }
+}
+
+trait Printable {
+    fn to_prnt<const N: i32>(fxd: fixed::FixedI64::<N>) -> PrintableFixedI64<N>;
+}
+impl<const M: i32>Printable for fixed::FixedI64::<M> {
+    fn to_prnt<const N:i32>(fxd: fixed::FixedI64::<N>) -> PrintableFixedI64<N> {
+        PrintableFixedI64::<N>(fxd)
     }
 }
 
