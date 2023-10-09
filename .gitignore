@@ -8,5 +8,6 @@ src/PCBTestRust.code-workspace
 /uniflash
 
 /msp430-gcc
+/mspdebug
 
 .metadata/

@@ -3,7 +3,7 @@
 // PCB-specific values (e.g. reference voltages, channel connections) can be found in the pcb_mapping file.
 
 use embedded_hal::digital::v2::OutputPin;
-use no_std_compat::marker::PhantomData;
+use core::marker::PhantomData;
 
 use crate::spi::{SckPolarity::IdleHigh, SckPhase::SampleSecondEdge};
 use crate::{spi::PayloadSPI, PayloadSPIController};

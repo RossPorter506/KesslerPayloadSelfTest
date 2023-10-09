@@ -2,12 +2,11 @@
 name = "msp430_pcb_self_test"
 version = "0.0.1"
 authors = ["Ross Porter <rossporter506@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Self test program for Kessler's payload board with MSP430fr2355"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/YuhanLiin/msp430fr2x5x-hal"
+publish = false
+repository = "https://github.com/RossPorter506/KesslerPayloadSelfTest"
 keywords = ["no-std", "msp430", "ti", "launchpad", "embedded-hal"]
-documentation = "https://docs.rs/msp430fr2x5x-hal"
 
 [features]
 debug_print = []
@@ -23,7 +22,6 @@ panic-never = "0.1.0"
 msp430-rt = "0.4.0"
 critical-section = "1.0.0"
 msp430 = { version = "0.4.0", features = ["critical-section-single-core"] }
-no-std-compat="0.4.1"
 ufmt ="0.2.0"
 fixed="2.0.0-alpha.11"
 
