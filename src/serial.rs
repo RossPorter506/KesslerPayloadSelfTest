@@ -68,7 +68,7 @@ impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
     Instead, we make a trait Printable which can be implemented on fixed numbers by calling x.to_prnt()
     This trait returns a newtype PrintableFixedI64 which can implement uDisplay, since it's defined inside this project
 */
-struct PrintableFixedI64<const N: i32>(fixed::FixedI64::<N>);
+pub struct PrintableFixedI64<const N: i32>(fixed::FixedI64::<N>);
 impl<const N: i32> uDisplay for PrintableFixedI64<N> {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where W: uWrite + ?Sized {
@@ -101,12 +101,12 @@ impl<const N: i32> uDisplay for PrintableFixedI64<N> {
     }
 }
 
-trait Printable {
-    fn to_prnt<const N: i32>(fxd: fixed::FixedI64::<N>) -> PrintableFixedI64<N>;
+pub trait Printable<const N: i32> {
+    fn printable(&self) -> PrintableFixedI64<N>;
 }
-impl<const M: i32>Printable for fixed::FixedI64::<M> {
-    fn to_prnt<const N:i32>(fxd: fixed::FixedI64::<N>) -> PrintableFixedI64<N> {
-        PrintableFixedI64::<N>(fxd)
+impl<const N: i32> Printable<N> for fixed::FixedI64::<N> {
+    fn printable(&self) -> PrintableFixedI64<N> {
+        PrintableFixedI64::<N>(*self)
     }
 }
 
