@@ -1060,9 +1060,8 @@ impl ufmt::uDisplay for PerformanceResult<'_> {
             Performance::Nominal    => uwrite_coloured!(f, " OK ", Green),
             Performance::Inaccurate => uwrite_coloured!(f, "INAC", Yellow),
             Performance::NotWorking => uwrite_coloured!(f, "FAIL", Red),};
-        let percent_acc: i32 = (self.accuracy*100).to_num();
-        let fractional_percent: i32 = (self.accuracy*10000).to_num::<i32>() - percent_acc*100;
-        uwrite!(f, "] {}, {}.{}% error", self.name, percent_acc, fractional_percent).ok();
+        
+        uwrite!(f, "] {}, {}% error", self.name, (100*self.accuracy).printable()).ok();
         Ok(())
     }
 }
