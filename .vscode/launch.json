@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "MSPDebug",
+            "type": "cppdbg",
+            "request": "launch",
+            // Unfortunately I couldn't find a way to avoid hard-coding this path :(
+            "program": "${workspaceFolder}/target/msp430-none-elf/debug/msp430_pcb_self_test",
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "${workspaceFolder}/msp430-gcc/bin/msp430-elf-gdb",
+            // runs "monitor reset" in gdb, which consequently runs "reset" in mspdebug
+            "miDebuggerArgs": "-ex monitor reset",
+            "miDebuggerServerAddress": "localhost:2000",
+            "debugServerPath": "${workspaceFolder}/mspdebug/bin/mspdebug",
+            "debugServerArgs": "rf2500 gdb",
+            "externalConsole": true,
+            "serverStarted": "Bound to port 2000. Now waiting for connection...",
+            "stopAtEntry": true
+        }
+    ]
+}
