@@ -88,7 +88,7 @@ fn main() -> ! {
             TimerConfig::aclk(&aclk),
         );
         let mut timer = parts.timer;
-        timer.enable_interrupts();
+        // timer.enable_interrupts();
 
         led_pins.yellow_led.toggle().ok();
 
