@@ -9,9 +9,12 @@
 #![feature(const_trait_impl)]
 #![feature(abi_msp430_interrupt)]
 
-use embedded_hal::{digital::v2::*, timer::CountDown};
-use msp430::interrupt::{enable, Mutex};
-use msp430fr2355::interrupt;
+use core::ops::DerefMut;
+
+use critical_section::{with, CriticalSection};
+use embedded_hal::{digital::v2::*, timer::CountDown, blocking::i2c};
+use msp430::{interrupt::{enable, Mutex, free}, register};
+use msp430fr2355::{interrupt, e_usci_b0::ucb0i2coa1::I2COA1_R, RTC, TB0, tb0::TB0CCR0, generic::BitWriter, adc::RegisterBlock, cs::{csctl8::ACLKREQEN_R, self}, interrupt::TIMER2_B1};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
 use msp430fr2x5x_hal::timer::{TimerParts3, TimerConfig, CapCmpTimer3};
@@ -42,6 +45,8 @@ mod serial; use serial::SerialWriter;
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
 use void::ResultVoidExt;
+
+static mut SEC_ELAPSED: u32 = 0;
 
 #[allow(unused_mut)]
 #[entry]
@@ -80,15 +85,14 @@ fn main() -> ! {
             .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
             .aclk_refoclk()
             .freeze(&mut fram);
-        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.
+        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
         
-
         let parts = TimerParts3::new(
             periph.TB2,
             TimerConfig::aclk(&aclk),
         );
         let mut timer = parts.timer;
-        // timer.enable_interrupts();
+        timer.enable_interrupts();
 
         led_pins.yellow_led.toggle().ok();
 
@@ -114,13 +118,13 @@ fn main() -> ! {
         // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
-        timer.start(32768 as u16);
-        let mut secondCount: u32 = 0;
+        timer.start(32768 as u16);        
 
         loop{
-            uwriteln!(serial_writer, "{} seconds", secondCount).ok();
-            block!(timer.wait()).void_unwrap();
-            secondCount = secondCount + 1;
+            unsafe{
+                uwriteln!(serial_writer, "{} seconds", SEC_ELAPSED).ok();
+            }       
+            delay_cycles(250_000);
         }
         
         // let mut payload = payload.into_disabled_heater().into_disabled_payload();
@@ -228,6 +232,13 @@ let debug_serial_pins = DebugSerialPins{
     tx: port4.pin3.to_output().to_alternate1(),};
 
 (payload_spi_pins, pinpuller_pins, led_pins, payload_control_pins, lms_control_pins, deploy_sense_pins, payload_peripheral_cs_pins, debug_serial_pins)
+}
+
+#[interrupt]
+fn TIMER2_B1(){
+    unsafe{
+        SEC_ELAPSED += 1;
+    }    
 }
 
 // The compiler will emit calls to the abort() compiler intrinsic if debug assertions are
