@@ -215,7 +215,7 @@ impl AutomatedFunctionalTests{
 
 /// Rather than using percent error (which isn't defined when the actual value is zero), we use Relative Percent Difference (RPD).
 /// Outputs are between -1 and 1. Values near zero are close to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual.
-fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
+pub fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
     if actual == 0 && measured == 0{
         return Fxd::ZERO;
     }
@@ -229,13 +229,13 @@ fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
     // but the panic_never condition fails even if we check denominator is non-zero first...
 }
 /// Iteratively updates an average with a new value
-fn in_place_average(acc: Fxd, new: Fxd, n: u16) -> Fxd{
+pub fn in_place_average(acc: Fxd, new: Fxd, n: u16) -> Fxd{
     //acc + ((new - acc) / Fxd::from(n+1))
     acc + ((new - acc).checked_div(Fxd::from(n+1))
         .unwrap_or(Fxd::ZERO)) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
 } 
 
-fn calculate_performance_result(name: &str, rpd: Fxd, succ_percent: u8, inacc_percent: u8) -> PerformanceResult<'_> {
+pub fn calculate_performance_result(name: &str, rpd: Fxd, succ_percent: u8, inacc_percent: u8) -> PerformanceResult<'_> {
     let performance = match rpd.abs() {
         x if x < Fxd::from(succ_percent) / 100  => Performance::Nominal,
         x if x < Fxd::from(inacc_percent) / 100 => Performance::Inaccurate,
@@ -572,7 +572,7 @@ mod heater_mock {
         .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
 }
 
-mod hvdc_mock {
+pub mod hvdc_mock {
     pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
     pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
 
@@ -988,7 +988,7 @@ impl ManualPerformanceTests{
         payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
         spi_bus: &mut PayloadSPIController, 
         debug_writer: &'a mut SerialWriter<USCI>,
-        serial_reader: &'a mut Rx<USCI>) -> ! { // Does not return
+        serial_reader: &'a mut Rx<USCI>){ // Does not return
     
         const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
             (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),

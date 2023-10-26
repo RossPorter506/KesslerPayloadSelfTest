@@ -31,11 +31,13 @@ mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, 
 mod dac; use dac::DAC;
 mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
-mod payload; use payload::PayloadBuilder;
+mod payload; use payload::{PayloadBuilder, SwitchState, PayloadState, PayloadState::*, HeaterState, HeaterState::*};
 mod serial; use serial::SerialWriter;
 
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
+
+use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::PayloadController};
 
 #[allow(unused_mut)]
 #[entry]
@@ -65,7 +67,7 @@ fn main() -> ! {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -92,16 +94,66 @@ fn main() -> ! {
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-        let mut payload = payload.into_enabled_heater();
+        //payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        // let mut payload = payload.into_enabled_heater();
         
-        AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
+        // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
-        let mut payload = payload.into_disabled_heater().into_disabled_payload();
-        idle_loop(&mut led_pins);
+        let mut payload_on: Option<PayloadController<{PayloadOn}, {HeaterOn}>> = None;
+        let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
+        //loop{
+            // ------------------------------------------------------------------------
+            // -------------------------- Payload Off ---------------------------------
+            // ------------------------------------------------------------------------
+            // ENTER TIMER CODE TO KEEP PAYLOAD OFF FOR 45 MINUTES
+    
+
+            // ------------------------------------------------------------------------
+            // ----------------------  Pinpuller activation ---------------------------
+            // -----------------------------------------------------------------------
+
+            // activate pinpuller
+            pinpuller_pins.burn_wire_1.set_high().ok();
+
+            for _ in 0..60{           
+
+                // ENTER CODE TO LEAVE PINPULLER ON FOR 60 SECONDS
+               
+            }   
+
+            // disable pinpuller
+            pinpuller_pins.burn_wire_1.set_low().ok();
+
+
+            // ------------------------------------------------------------------------
+            // --------------------------  Payload On ---------------------------------
+            // ------------------------------------------------------------------------
+
+            // Payload On activated for 44 minutes
+            payload_on = Some(payload_off.unwrap().into_enabled_payload().into_enabled_heater());
+            payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Connected);
+            payload_on.as_mut().unwrap().set_tether_bias_switch(SwitchState::Connected);
+            payload_on.as_mut().unwrap().set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+            payload_on.as_mut().unwrap().set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+            payload_on.as_mut().unwrap().set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+
+            for _ in 0..44*60{
+
+                // ENTER CODE TO READ SENSORS FOR 44 MINUTES
+
+            }
+
+            payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Disconnected);
+            payload_on.as_mut().unwrap().set_tether_bias_switch(SwitchState::Disconnected);
+            let payload_off = Some(payload_on.unwrap().into_disabled_heater().into_disabled_payload());
+
+        //}
+        loop{}
+        // let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        // idle_loop(&mut led_pins);
     }
     else {#[allow(clippy::empty_loop)] loop{}}
 }
