@@ -8,11 +8,20 @@
 #![feature(adt_const_params)]
 #![feature(const_trait_impl)]
 
+use core::{ops::DerefMut, cell::UnsafeCell};
+
+use critical_section::{with, CriticalSection};
+use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
+use msp430::{interrupt::{enable, Mutex, free}, register};
+use msp430fr2355::{interrupt, e_usci_b0::ucb0i2coa1::I2COA1_R, RTC, TB0, tb0::TB0CCR0, generic::BitWriter, adc::RegisterBlock, cs::{csctl8::ACLKREQEN_R, self}};
 use embedded_hal::digital::v2::*;
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
+use msp430fr2355::Interrupt::TIMER0_B1;
+use msp430fr2x5x_hal::timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer};
 #[allow(unused_imports)]
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, capture::{CapCmp, CapTrigger, Capture, CaptureParts3, CaptureVector, CCR1,},serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -33,9 +42,11 @@ mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
 mod digipot; use digipot::Digipot;
 mod payload; use payload::{PayloadBuilder, SwitchState, PayloadState, PayloadState::*, HeaterState, HeaterState::*};
 mod serial; use serial::SerialWriter;
+mod tvac;
 
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
+use void::ResultVoidExt;
 
 use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::PayloadController};
 
@@ -75,7 +86,13 @@ fn main() -> ! {
             .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
             .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
             .freeze(&mut fram);
-        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.
+        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
+        
+        let parts = TimerParts3::new(
+            periph.TB0,
+            TimerConfig::aclk(&aclk),
+        );
+        let mut timer = parts.timer;
 
         led_pins.yellow_led.toggle().ok();
 
@@ -86,8 +103,8 @@ fn main() -> ! {
             StopBits::OneStopBit,
             Parity::NoParity,
             Loopback::NoLoop,
-            9600)
-            .use_aclk(&aclk)
+            115200)
+            .use_smclk(&smclk)
             .split(debug_serial_pins.tx, debug_serial_pins.rx);
 
         led_pins.red_led.toggle().ok();
@@ -101,37 +118,64 @@ fn main() -> ! {
         // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+    
+        timer.start(32768 as u16);
+        let mut sec_elapsed_phase:u32 = 0;
+        let mut sec_elapsed_total:u32 = 0;
 
         let mut payload_on: Option<PayloadController<{PayloadOn}, {HeaterOn}>> = None;
         let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
-        //loop{
+
+        loop{
             // ------------------------------------------------------------------------
             // -------------------------- Payload Off ---------------------------------
             // ------------------------------------------------------------------------
-            // ENTER TIMER CODE TO KEEP PAYLOAD OFF FOR 45 MINUTES
-    
+            uwriteln!(serial_writer, "Entering payload-off phase").ok();
+
+            for _ in 0..45*60{
+                // LEAVE PAYLOAD OFF FOR 45 MINUTES
+                block!(timer.wait()).void_unwrap();
+                sec_elapsed_phase += 1;
+                sec_elapsed_total += 1;
+                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
+            }
+
+            uwriteln!(serial_writer, "").ok();
+            sec_elapsed_phase = 0;
 
             // ------------------------------------------------------------------------
             // ----------------------  Pinpuller activation ---------------------------
             // -----------------------------------------------------------------------
-
-            // activate pinpuller
+            uwriteln!(serial_writer, "Entering pinpuller activation phase").ok();
+            // activate pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_high().ok();
+            lms_control_pins.lms_led_enable.set_high().ok();
+            lms_control_pins.lms_receiver_enable.set_high().ok();
 
             for _ in 0..60{           
+                // LEAVE PINPULLER ON FOR 60 SECONDS
+                block!(timer.wait()).void_unwrap();
+                sec_elapsed_phase += 1;
+                sec_elapsed_total += 1;
+                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
 
-                // ENTER CODE TO LEAVE PINPULLER ON FOR 60 SECONDS
-               
+                tvac::test_pinpuller_current_sensor(payload_off.as_mut().unwrap(), &mut pinpuller_pins,&mut payload_spi_controller, &mut serial_writer);
+                
             }   
 
-            // disable pinpuller
+            // disable pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_low().ok();
+            lms_control_pins.lms_led_enable.set_low().ok();
+            lms_control_pins.lms_receiver_enable.set_low().ok();
 
-
+            uwriteln!(serial_writer, "").ok();
+            sec_elapsed_phase = 0;
             // ------------------------------------------------------------------------
             // --------------------------  Payload On ---------------------------------
             // ------------------------------------------------------------------------
-
+            uwriteln!(serial_writer, "Entering payload-on phase").ok();
             // Payload On activated for 44 minutes
             payload_on = Some(payload_off.unwrap().into_enabled_payload().into_enabled_heater());
             payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Connected);
@@ -143,14 +187,21 @@ fn main() -> ! {
             for _ in 0..44*60{
 
                 // ENTER CODE TO READ SENSORS FOR 44 MINUTES
-
+                block!(timer.wait()).void_unwrap();
+                sec_elapsed_phase += 1;
+                sec_elapsed_total += 1;
+                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
+                tvac::payload_on_sensing(payload_on.as_mut().unwrap(), &mut payload_spi_controller, &mut serial_writer)
             }
 
             payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Disconnected);
             payload_on.as_mut().unwrap().set_tether_bias_switch(SwitchState::Disconnected);
-            let payload_off = Some(payload_on.unwrap().into_disabled_heater().into_disabled_payload());
+            payload_off = Some(payload_on.unwrap().into_disabled_heater().into_disabled_payload());
 
-        //}
+            uwriteln!(serial_writer, "").ok();
+            sec_elapsed_phase = 0;
+        }
         loop{}
         // let mut payload = payload.into_disabled_heater().into_disabled_payload();
         // idle_loop(&mut led_pins);

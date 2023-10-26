@@ -15,24 +15,23 @@ use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 type Fxd = FixedI64::<32>;
 
-use crate::testing::{calculate_performance_result, calculate_rpd, in_place_average, hvdc_mock, PerformanceResult};
+use crate::testing::{calculate_performance_result, calculate_rpd, in_place_average, hvdc_mock,heater_mock,pinpuller_mock, PerformanceResult};
 
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 
 pub fn payload_on_sensing<USCI:SerialUsci>(
     payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &mut PayloadSPIController, 
-    debug_writer: &'a mut SerialWriter<USCI>,
-    serial_reader: &'a mut Rx<USCI>){
+    serial: &mut SerialWriter<USCI>){
 uwriteln!(serial, "==== Automatic Performance Tests Start ====").ok();
 // Each of these three fn's takes the same arguments and both return a voltage and current result
-let fn_arr = [Self::test_cathode_offset, Self::test_tether_bias, Self::test_heater];
+let fn_arr = [test_cathode_offset, test_tether_bias, test_heater];
 for sensor_fn in fn_arr.iter(){
-    for sensor_result in sensor_fn(payload, spi_bus, debug_writer).iter(){
+    for sensor_result in sensor_fn(payload, spi_bus, serial).iter(){
         uwriteln!(serial, "{}", sensor_result).ok();
     }
 }
-uwriteln!(serial, "{}", Self::temperature_sensing(payload, spi_bus, debug_writer,serial)).ok();
+temperature_sensing(payload, spi_bus, serial);
 
 uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
 }
@@ -40,8 +39,7 @@ uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
 pub fn temperature_sensing<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
     payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
     spi_bus: &mut PayloadSPIController, 
-    debug_writer: &'a mut SerialWriter<USCI>,
-    serial_reader: &'a mut Rx<USCI>){ // Does not return
+    debug_writer: &'a mut SerialWriter<USCI>){ // Does not return
 
     const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
         (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
@@ -171,7 +169,7 @@ pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DO
     payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
     p_pins: &'a mut PinpullerActivationPins, 
     spi_bus: &'a mut PayloadSPIController,
-    serial_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
+    serial_writer: &mut SerialWriter<USCI>){
 
 let mut accuracy: Fxd = Fxd::ZERO;
 
@@ -193,5 +191,6 @@ for (n, pin) in pin_list.iter_mut().enumerate() {
     delay_cycles(1000);
 }
 
-calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
+let a = calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20);
+uwrite!(serial_writer, "{}", a).ok();
 }

@@ -5,7 +5,7 @@ use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
 use crate::payload::{PayloadController, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
-use crate::serial::{SerialWriter, wait_for_any_packet};
+use crate::serial::{SerialWriter, wait_for_any_packet, Printable};
 #[allow(unused_imports)]
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
@@ -541,7 +541,7 @@ impl ManualFunctionalTests{
 }
 
 /// Values associated with mock pinpuller tests
-mod pinpuller_mock {
+pub mod pinpuller_mock {
     use super::{Fxd, PINPULLER_VOLTAGE_MILLIVOLTS};
 
     const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
@@ -559,7 +559,7 @@ mod pinpuller_mock {
 }
 
 /// Values associated with mock heater tests
-mod heater_mock {
+pub mod heater_mock {
     use super::{Fxd, fixed_sqrt};
 
     const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 10_000;
