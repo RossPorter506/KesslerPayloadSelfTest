@@ -9,17 +9,18 @@
 #![feature(const_trait_impl)]
 #![feature(abi_msp430_interrupt)]
 
-use core::ops::DerefMut;
+use core::{ops::DerefMut, cell::UnsafeCell};
 
 use critical_section::{with, CriticalSection};
-use embedded_hal::{digital::v2::*, timer::CountDown, blocking::i2c};
+use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
 use msp430::{interrupt::{enable, Mutex, free}, register};
-use msp430fr2355::{interrupt, e_usci_b0::ucb0i2coa1::I2COA1_R, RTC, TB0, tb0::TB0CCR0, generic::BitWriter, adc::RegisterBlock, cs::{csctl8::ACLKREQEN_R, self}, interrupt::TIMER2_B1};
+use msp430fr2355::{interrupt, e_usci_b0::ucb0i2coa1::I2COA1_R, RTC, TB0, tb0::TB0CCR0, generic::BitWriter, adc::RegisterBlock, cs::{csctl8::ACLKREQEN_R, self}};
 use msp430_rt::entry;
 use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
-use msp430fr2x5x_hal::timer::{TimerParts3, TimerConfig, CapCmpTimer3};
+use msp430fr2355::Interrupt::TIMER0_B1;
+use msp430fr2x5x_hal::timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer};
 #[allow(unused_imports)]
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, capture::{CapCmp, CapTrigger, Capture, CaptureParts3, CaptureVector, TBxIV, CCR1,},serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, capture::{CapCmp, CapTrigger, Capture, CaptureParts3, CaptureVector, CCR1,},serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
@@ -88,11 +89,10 @@ fn main() -> ! {
         for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
         
         let parts = TimerParts3::new(
-            periph.TB2,
+            periph.TB0,
             TimerConfig::aclk(&aclk),
         );
         let mut timer = parts.timer;
-        timer.enable_interrupts();
 
         led_pins.yellow_led.toggle().ok();
 
@@ -103,14 +103,14 @@ fn main() -> ! {
             StopBits::OneStopBit,
             Parity::NoParity,
             Loopback::NoLoop,
-            9600)
-            .use_aclk(&aclk)
+            115200)
+            .use_smclk(&smclk)
             .split(debug_serial_pins.tx, debug_serial_pins.rx);
 
         led_pins.red_led.toggle().ok();
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
-
+            
         payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
         // let mut payload = payload.into_enabled_heater();
         
@@ -118,13 +118,15 @@ fn main() -> ! {
         // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
-        timer.start(32768 as u16);        
+    
+        timer.start(32768 as u16);
 
         loop{
             unsafe{
                 uwriteln!(serial_writer, "{} seconds", SEC_ELAPSED).ok();
-            }       
-            delay_cycles(250_000);
+            }  
+            block!(timer.wait()).void_unwrap();
+            unsafe{SEC_ELAPSED += 1;};
         }
         
         // let mut payload = payload.into_disabled_heater().into_disabled_payload();
@@ -232,13 +234,6 @@ let debug_serial_pins = DebugSerialPins{
     tx: port4.pin3.to_output().to_alternate1(),};
 
 (payload_spi_pins, pinpuller_pins, led_pins, payload_control_pins, lms_control_pins, deploy_sense_pins, payload_peripheral_cs_pins, debug_serial_pins)
-}
-
-#[interrupt]
-fn TIMER2_B1(){
-    unsafe{
-        SEC_ELAPSED += 1;
-    }    
 }
 
 // The compiler will emit calls to the abort() compiler intrinsic if debug assertions are
