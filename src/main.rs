@@ -12,15 +12,12 @@ use core::{ops::DerefMut, cell::UnsafeCell};
 
 use critical_section::{with, CriticalSection};
 use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
-use msp430::{interrupt::{enable, Mutex, free}, register};
-use msp430fr2355::{interrupt, e_usci_b0::ucb0i2coa1::I2COA1_R, RTC, TB0, tb0::TB0CCR0, generic::BitWriter, adc::RegisterBlock, cs::{csctl8::ACLKREQEN_R, self}};
-use embedded_hal::digital::v2::*;
 use msp430_rt::entry;
-use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
-use msp430fr2355::Interrupt::TIMER0_B1;
-use msp430fr2x5x_hal::timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer};
-#[allow(unused_imports)]
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, capture::{CapCmp, CapTrigger, Capture, CaptureParts3, CaptureVector, CCR1,},serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2355::{P2, P3, P4, P5, P6, PMM, Interrupt::TIMER0_B1};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, 
+    serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, 
+    clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
+    timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
 use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
@@ -119,11 +116,11 @@ fn main() -> ! {
         //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
         //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
     
-        timer.start(32768 as u16);
+        timer.start(32768u16);
         let mut sec_elapsed_phase:u32 = 0;
         let mut sec_elapsed_total:u32 = 0;
 
-        let mut payload_on: Option<PayloadController<{PayloadOn}, {HeaterOn}>> = None;
+        //  To avoid 'use of moved value' as we mutate the type of payload between loop iterations(?), we make a second variable to store payload here between loops. 
         let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
 
         loop{
@@ -146,7 +143,7 @@ fn main() -> ! {
 
             // ------------------------------------------------------------------------
             // ----------------------  Pinpuller activation ---------------------------
-            // -----------------------------------------------------------------------
+            // ------------------------------------------------------------------------
             uwriteln!(serial_writer, "Entering pinpuller activation phase").ok();
             // activate pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_high().ok();
@@ -162,9 +159,7 @@ fn main() -> ! {
                 uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
 
                 tvac::test_pinpuller_current_sensor(payload_off.as_mut().unwrap(), &mut pinpuller_pins,&mut payload_spi_controller, &mut serial_writer);
-                
             }   
-
             // disable pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_low().ok();
             lms_control_pins.lms_led_enable.set_low().ok();
@@ -172,37 +167,37 @@ fn main() -> ! {
 
             uwriteln!(serial_writer, "").ok();
             sec_elapsed_phase = 0;
+
             // ------------------------------------------------------------------------
-            // --------------------------  Payload On ---------------------------------
+            // ---------------------------  Emission  ---------------------------------
             // ------------------------------------------------------------------------
             uwriteln!(serial_writer, "Entering payload-on phase").ok();
             // Payload On activated for 44 minutes
-            payload_on = Some(payload_off.unwrap().into_enabled_payload().into_enabled_heater());
-            payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Connected);
-            payload_on.as_mut().unwrap().set_tether_bias_switch(SwitchState::Connected);
-            payload_on.as_mut().unwrap().set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload_on.as_mut().unwrap().set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload_on.as_mut().unwrap().set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+            let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
+            
+            payload.set_cathode_offset_switch(SwitchState::Connected);
+            payload.set_tether_bias_switch(SwitchState::Connected);
+            payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+            payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+            payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
 
             for _ in 0..44*60{
-
                 // ENTER CODE TO READ SENSORS FOR 44 MINUTES
                 block!(timer.wait()).void_unwrap();
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
                 uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
-                tvac::payload_on_sensing(payload_on.as_mut().unwrap(), &mut payload_spi_controller, &mut serial_writer)
+                tvac::payload_on_sensing(&mut payload, &mut payload_spi_controller, &mut serial_writer)
             }
 
-            payload_on.as_mut().unwrap().set_cathode_offset_switch(SwitchState::Disconnected);
-            payload_on.as_mut().unwrap().set_tether_bias_switch(SwitchState::Disconnected);
-            payload_off = Some(payload_on.unwrap().into_disabled_heater().into_disabled_payload());
+            payload.set_cathode_offset_switch(SwitchState::Disconnected);
+            payload.set_tether_bias_switch(SwitchState::Disconnected);
+            payload_off = Some(payload.into_disabled_heater().into_disabled_payload());
 
             uwriteln!(serial_writer, "").ok();
             sec_elapsed_phase = 0;
         }
-        loop{}
         // let mut payload = payload.into_disabled_heater().into_disabled_payload();
         // idle_loop(&mut led_pins);
     }
