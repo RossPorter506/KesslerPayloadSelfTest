@@ -464,6 +464,47 @@ impl AutomatedPerformanceTests{
         
         calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
     }    
+
+    // Connect repeller plate to HVDC tether supply (Pin 3 of S1_TBS) to cover a range of 25-250V 
+    pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+        spi_bus: &'a mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 1] {
+
+        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+        let supply_min: u32 = TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS;
+        let supply_max: u32 = TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS;
+        const NUM_MEASUREMENTS: usize = 10;        
+        const TEST_START_PERCENT: u32 = 10;
+        const TEST_END_PERCENT: u32 = 100;
+
+        PayloadController::set_tether_bias_switch(payload, SwitchState::Connected);   
+
+        for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
+
+            // Set tether voltage
+            let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
+            payload.set_tether_bias_voltage(set_voltage_mv, spi_bus);
+            dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);      
+            delay_cycles(100_000); //settling time 
+
+            // Measure repeller voltage (with this config, this should be the same as the tether bias voltage measurement)
+            let measured_repeller_voltage_mv = payload.get_repeller_voltage_millivolts(spi_bus);
+            let measured_tether_voltage_mv = payload.get_tether_bias_voltage_millivolts(spi_bus);
+            dbg_uwriteln!(debug_writer, "Measured repeller voltage: {}mV", measured_repeller_voltage_mv);  
+            dbg_uwriteln!(debug_writer, "Measured tether voltage: {}mV", measured_tether_voltage_mv);  
+
+            // Measure rpd and accuracy
+            let voltage_rpd = calculate_rpd(measured_repeller_voltage_mv as i32, set_voltage_mv as i32);
+            dbg_uwriteln!(debug_writer, "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
+        }
+
+        PayloadController::set_tether_bias_switch(payload, SwitchState::Disconnected);     
+
+    let voltage_result = calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);    
+    [voltage_result]
+    }
 }
 
 /// Tests that require human intervention. These are pass/fail tests.

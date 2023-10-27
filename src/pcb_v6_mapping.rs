@@ -209,4 +209,5 @@ pub mod power_supply_equations {
 
 pub const TETHER_SENSE_RESISTANCE_OHMS: u32 = 1;
 pub const CATHODE_SENSE_RESISTANCE_OHMS: u32 = 1;
+pub const APERTURE_SENSE_RESISTANCE_OHMS: u32 = 1;
 pub const HEATER_SENSE_RESISTANCE_MILLIOHMS: u32 = 10;
