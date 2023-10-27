@@ -112,9 +112,10 @@ fn main() -> ! {
         // let mut payload = payload.into_enabled_heater();
         
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-        // AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
-        //ManualFunctionalTests::full_system_test(&mut deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
-        //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
+        let mut payload = payload.into_enabled_payload().into_enabled_heater();
+        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        
     
         timer.start(32768u16);
         let mut sec_elapsed_phase:u32 = 0;
@@ -171,7 +172,7 @@ fn main() -> ! {
             // ------------------------------------------------------------------------
             // ---------------------------  Emission  ---------------------------------
             // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "Entering payload-on phase").ok();
+            uwriteln!(serial_writer, "Entering emission phase").ok();
             // Payload On activated for 44 minutes
             let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
             
