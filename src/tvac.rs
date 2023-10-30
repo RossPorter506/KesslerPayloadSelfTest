@@ -23,7 +23,7 @@ pub fn payload_on_sensing<USCI:SerialUsci>(
     payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>){
-uwriteln!(serial, "==== Automatic Performance Tests Start ====").ok();
+
 // Each of these three fn's takes the same arguments and both return a voltage and current result
 let fn_arr = [test_cathode_offset, test_tether_bias, test_heater];
 for sensor_fn in fn_arr.iter(){
@@ -32,8 +32,6 @@ for sensor_fn in fn_arr.iter(){
     }
 }
 temperature_sensing(payload, spi_bus, serial);
-
-uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
 }
 
 pub fn temperature_sensing<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
@@ -192,5 +190,5 @@ for (n, pin) in pin_list.iter_mut().enumerate() {
 }
 
 let a = calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20);
-uwrite!(serial_writer, "{}", a).ok();
+uwriteln!(serial_writer, "{}", a).ok();
 }

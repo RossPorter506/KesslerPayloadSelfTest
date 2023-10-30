@@ -128,7 +128,7 @@ fn main() -> ! {
             // ------------------------------------------------------------------------
             // -------------------------- Payload Off ---------------------------------
             // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "Entering payload-off phase").ok();
+            uwriteln!(serial_writer, "ENTERING PAYLOAD-OFF PHASE").ok();
 
             for _ in 0..45*60{
                 // LEAVE PAYLOAD OFF FOR 45 MINUTES
@@ -136,7 +136,7 @@ fn main() -> ! {
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
             }
 
             uwriteln!(serial_writer, "").ok();
@@ -145,7 +145,7 @@ fn main() -> ! {
             // ------------------------------------------------------------------------
             // ----------------------  Pinpuller activation ---------------------------
             // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "Entering pinpuller activation phase").ok();
+            uwriteln!(serial_writer, "ENTERING PINPULLER ACTIVATION PHASE").ok();
             // activate pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_high().ok();
             lms_control_pins.lms_led_enable.set_high().ok();
@@ -157,7 +157,7 @@ fn main() -> ! {
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
 
                 tvac::test_pinpuller_current_sensor(payload_off.as_mut().unwrap(), &mut pinpuller_pins,&mut payload_spi_controller, &mut serial_writer);
             }   
@@ -172,7 +172,7 @@ fn main() -> ! {
             // ------------------------------------------------------------------------
             // ---------------------------  Emission  ---------------------------------
             // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "Entering emission phase").ok();
+            uwriteln!(serial_writer, "ENTERING EMISSION PHASE").ok();
             // Payload On activated for 44 minutes
             let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
             
@@ -188,7 +188,7 @@ fn main() -> ! {
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_phase).ok();
+                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
                 tvac::payload_on_sensing(&mut payload, &mut payload_spi_controller, &mut serial_writer)
             }
 
