@@ -137,6 +137,7 @@ fn main() -> ! {
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
                 uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
+                tvac::payload_off_sensing(payload_off.as_mut().unwrap(), &mut payload_spi_controller, &mut serial_writer);
             }
 
             uwriteln!(serial_writer, "").ok();
@@ -158,9 +159,9 @@ fn main() -> ! {
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
                 uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
+                tvac::deployment_sensing(payload_off.as_mut().unwrap(),&mut payload_spi_controller, &mut serial_writer);
+            }
 
-                tvac::test_pinpuller_current_sensor(payload_off.as_mut().unwrap(), &mut pinpuller_pins,&mut payload_spi_controller, &mut serial_writer);
-            }   
             // disable pinpuller and LMS
             pinpuller_pins.burn_wire_1.set_low().ok();
             lms_control_pins.lms_led_enable.set_low().ok();
@@ -189,7 +190,7 @@ fn main() -> ! {
                 sec_elapsed_total += 1;
                 uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
                 uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
-                tvac::payload_on_sensing(&mut payload, &mut payload_spi_controller, &mut serial_writer)
+                tvac::emission_sensing(&mut payload, &mut payload_spi_controller, &mut serial_writer)
             }
 
             payload.set_cathode_offset_switch(SwitchState::Disconnected);
