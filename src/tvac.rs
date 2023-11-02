@@ -31,6 +31,7 @@ pub fn emission_sensing<USCI:SerialUsci>(
             uwriteln!(serial, "{}", sensor_result).ok();
         }
     }
+    uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
     print_temperatures(payload, spi_bus, serial);
 }
 
@@ -172,6 +173,27 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     let current_result = calculate_performance_result("Heater current", current_rpd, 5, 20);
 
     [voltage_result, current_result]
+}
+
+pub fn test_repeller<'a, USCI: SerialUsci>(
+    payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+    spi_bus: &'a mut PayloadSPIController, 
+    debug_writer: &mut SerialWriter<USCI> ) -> PerformanceResult<'a> {
+
+    // Read voltage
+    let repeller_voltage_mv = payload.get_repeller_voltage_millivolts(spi_bus);
+    dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", repeller_voltage_mv);
+
+    // Calculate expected voltage/current
+    let expected_voltage_mv: u16 = HEATER_MAX_VOLTAGE_MILLIVOLTS;
+    let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / heater_mock::CIRCUIT_RESISTANCE_MOHMS as u32)
+            .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
+    dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
+
+    let voltage_rpd = calculate_rpd(repeller_voltage_mv, expected_voltage_mv as i32);
+    dbg_uwriteln!(debug_writer, "");
+
+    calculate_performance_result("Heater voltage", voltage_rpd, 5, 20)
 }
 
 pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
