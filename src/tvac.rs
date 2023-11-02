@@ -31,7 +31,7 @@ pub fn emission_sensing<USCI:SerialUsci>(
             uwriteln!(serial, "{}", sensor_result).ok();
         }
     }
-    temperature_sensing(payload, spi_bus, serial);
+    print_temperatures(payload, spi_bus, serial);
 }
 
 pub fn deployment_sensing<USCI:SerialUsci>(
@@ -39,8 +39,8 @@ pub fn deployment_sensing<USCI:SerialUsci>(
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>) {
     
-    test_pinpuller_current_sensor(payload, spi_bus, serial);
-    temperature_sensing(payload, spi_bus, serial);
+    uwriteln!(serial, "{}", test_pinpuller_current_sensor(payload, spi_bus, serial)).ok();
+    print_temperatures(payload, spi_bus, serial);
 }
 
 pub fn payload_off_sensing<USCI:SerialUsci>(
@@ -48,10 +48,10 @@ pub fn payload_off_sensing<USCI:SerialUsci>(
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>) {
 
-    temperature_sensing(payload, spi_bus, serial);
+    print_temperatures(payload, spi_bus, serial);
 }
 
-pub fn temperature_sensing<const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+pub fn print_temperatures<const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
     payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
     spi_bus: &mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI>){
@@ -70,7 +70,7 @@ pub fn temperature_sensing<const DONTCARE1:PayloadState, const DONTCARE2:HeaterS
     for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
         let tempr = payload.get_temperature_kelvin(sensor, spi_bus) as i16;
         uwriteln!(debug_writer, "{}: {}", name, tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
-    }              
+    }
     uwriteln!(debug_writer, "").ok();
 }
 
@@ -177,11 +177,11 @@ pub fn test_heater<'a, USCI: SerialUsci>(
 pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
     payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
     spi_bus: &'a mut PayloadSPIController,
-    serial_writer: &mut SerialWriter<USCI>){
+    serial_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a>{
 
     let measured_current = payload.get_pinpuller_current_milliamps(spi_bus);
     dbg_uwriteln!(serial_writer, "Measured current as {}mA", measured_current);
     let accuracy = calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num());
 
-    uwriteln!(serial_writer, "{}", calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)).ok();
+    calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
 }
