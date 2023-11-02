@@ -34,10 +34,10 @@ for sensor_fn in fn_arr.iter(){
 temperature_sensing(payload, spi_bus, serial);
 }
 
-pub fn temperature_sensing<'a, const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+pub fn temperature_sensing<const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
     payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
     spi_bus: &mut PayloadSPIController, 
-    debug_writer: &'a mut SerialWriter<USCI>){ // Does not return
+    debug_writer: &mut SerialWriter<USCI>){ // Does not return
 
     const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
         (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),
@@ -52,8 +52,7 @@ pub fn temperature_sensing<'a, const DONTCARE1:PayloadState, const DONTCARE2:Hea
 
     for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
         let tempr = payload.get_temperature_kelvin(sensor, spi_bus) as i16;
-        uwrite!(debug_writer, "{}: ", name).ok();
-        uwriteln!(debug_writer, "{}", tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
+        uwriteln!(debug_writer, "{}: {}", name, tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
     }              
     uwriteln!(debug_writer, "").ok();
 }
@@ -68,8 +67,6 @@ fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     debug_writer: &mut SerialWriter<USCI>) -> [Fxd; 2] {
     
     const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
-    let mut voltage_accuracy: Fxd = Fxd::ZERO;
-    let mut current_accuracy: Fxd = Fxd::ZERO;
         
     // Read voltage, current
     let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
@@ -137,9 +134,6 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
 
-    let mut voltage_accuracy: Fxd = Fxd::ZERO;
-    let mut current_accuracy: Fxd = Fxd::ZERO;
-
     // Read voltage, current
     let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
     dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
@@ -157,8 +151,8 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     let current_rpd = calculate_rpd(heater_current_ma as i32, expected_current_ma as i32);
     dbg_uwriteln!(debug_writer, "");
 
-    let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
-    let current_result = calculate_performance_result("Heater current", current_accuracy, 5, 20);
+    let voltage_result = calculate_performance_result("Heater voltage", voltage_rpd, 5, 20);
+    let current_result = calculate_performance_result("Heater current", current_rpd, 5, 20);
 
     [voltage_result, current_result]
 }
