@@ -75,7 +75,7 @@ fn main() -> ! {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -112,7 +112,7 @@ fn main() -> ! {
         // let mut payload = payload.into_enabled_heater();
         
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-        let mut payload = payload.into_enabled_payload().into_enabled_heater();
+        let mut payload = payload.into_enabled_heater();
         AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
         
