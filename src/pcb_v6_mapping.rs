@@ -52,8 +52,8 @@ pub use crate::pcb_common::*;
 
 pub mod power_supply_limits {
     // Maximum and minimum values producable by controllable power supplies
-    pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = 1890;
-    pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = 810;
+    pub const HEATER_MAX_VOLTAGE_MILLIVOLTS: u16 = super::power_supply_equations::digipot_resistance_to_heater_voltage_mv(crate::digipot::DIGIPOT_MAX_RESISTANCE);
+    pub const HEATER_MIN_VOLTAGE_MILLIVOLTS: u16 = super::power_supply_equations::digipot_resistance_to_heater_voltage_mv(crate::digipot::DIGIPOT_MIN_RESISTANCE);
 
     pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
     pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
@@ -193,11 +193,15 @@ pub mod power_supply_equations {
     use fixed::FixedI64;
     use super::*;
 
-    pub fn heater_target_voltage_to_digipot_resistance(millivolts: u32) -> u32{
-        //(FixedI64::<31>::from(75_000) / ((FixedI64::<31>::from(millivolts))/810 - FixedI64::<31>::from(1))).saturating_to_num()
-        (FixedI64::<31>::from(75_000) * ((FixedI64::<31>::from(millivolts-21)) /794 - FixedI64::<31>::from(1))).saturating_to_num()
+    const R118_OHMS: u32 = 30_080;
+    //NOTE: This is the inverse of the below function. These two equations should be kept in sync.
+    pub fn heater_target_voltage_to_digipot_resistance(millivolts: u16) -> u32{
+        ((millivolts as u32 - 21)*R118_OHMS) / 794 - R118_OHMS
     }
-
+    //NOTE: This is the inverse of the above function. These two equations should be kept in sync.
+    pub const fn digipot_resistance_to_heater_voltage_mv(resistance: u32) -> u16 {
+        ((resistance*794)/R118_OHMS + 794 + 21) as u16
+    }
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16{
         ((millivolts - 1215) * 100 / 5249) as u16
     }
