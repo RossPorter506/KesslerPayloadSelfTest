@@ -138,7 +138,7 @@ impl<const HSTATE: HeaterState> PayloadController<{PayloadOn}, HSTATE>{
             HEATER_MIN_VOLTAGE_MILLIVOLTS, 
             target_millivolts, 
             HEATER_MAX_VOLTAGE_MILLIVOLTS);
-        let target_digipot_resistance = heater_target_voltage_to_digipot_resistance(target_millivolts as u32);
+        let target_digipot_resistance = heater_target_voltage_to_digipot_resistance(target_millivolts);
         self.digipot.set_channel_to_resistance(HEATER_DIGIPOT_CHANNEL,target_digipot_resistance, spi_bus);
     }
     pub fn get_heater_voltage_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> u16{

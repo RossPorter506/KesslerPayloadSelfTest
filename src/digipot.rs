@@ -3,8 +3,10 @@
 
 
 // Digipot parameters
-pub const DIGIPOT_MAX_RESISTANCE: u32 = 100_000;
-pub const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
+const DIGIPOT_WIPER_RESISTANCE: u32 = 100;
+const DIGIPOT_MAX_INTERNAL_RESISTANCE: u32 = 100_000;
+pub const DIGIPOT_MAX_RESISTANCE: u32 = DIGIPOT_MAX_INTERNAL_RESISTANCE + DIGIPOT_WIPER_RESISTANCE;
+pub const DIGIPOT_MIN_RESISTANCE: u32 = DIGIPOT_WIPER_RESISTANCE;
 pub const DIGIPOT_RESOLUTION: u32 = 255;
 const DIGIPOT_NUM_ADDRESS_BITS: u8 = 1;
 const DIGIPOT_NUM_DATA_BITS: u8 = 8;
@@ -34,7 +36,7 @@ impl Digipot {
         spi_bus.send(DIGIPOT_NUM_BITS_IN_PACKET, payload as u32, &mut self.cs_pin);
     }
     pub fn resistance_to_count(&self, mut wanted_resistance: u32) -> u8{
-        wanted_resistance = enforce_bounds( DIGIPOT_WIPER_RESISTANCE, 
+        wanted_resistance = enforce_bounds( DIGIPOT_MIN_RESISTANCE, 
                                             wanted_resistance,
                                             DIGIPOT_MAX_RESISTANCE);
         (((wanted_resistance - DIGIPOT_WIPER_RESISTANCE) * DIGIPOT_RESOLUTION) / DIGIPOT_MAX_RESISTANCE) as u8
