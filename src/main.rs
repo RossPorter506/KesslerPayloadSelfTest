@@ -113,95 +113,17 @@ fn main() -> ! {
         
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
         let mut payload = payload.into_enabled_heater();
-        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
-        let mut payload = payload.into_disabled_heater().into_disabled_payload();
+        //AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        //let mut payload = payload.into_disabled_heater().into_disabled_payload();
         
-    
-        timer.start(32768u16);
-        let mut sec_elapsed_phase:u32 = 0;
-        let mut sec_elapsed_total:u32 = 0;
-
-        //  To avoid 'use of moved value' as we mutate the type of payload between loop iterations(?), we make a second variable to store payload here between loops. 
-        let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
-
-        loop{
-            // ------------------------------------------------------------------------
-            // -------------------------- Payload Off ---------------------------------
-            // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "ENTERING PAYLOAD-OFF PHASE").ok();
-
-            for _ in 0..45*60{
-                // LEAVE PAYLOAD OFF FOR 45 MINUTES
-                block!(timer.wait()).void_unwrap();
-                sec_elapsed_phase += 1;
-                sec_elapsed_total += 1;
-                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
-                tvac::payload_off_sensing(payload_off.as_mut().unwrap(), &mut payload_spi_controller, &mut serial_writer);
-            }
-
-            uwriteln!(serial_writer, "").ok();
-            sec_elapsed_phase = 0;
-
-            // ------------------------------------------------------------------------
-            // ----------------------  Pinpuller activation ---------------------------
-            // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "ENTERING PINPULLER ACTIVATION PHASE").ok();
-            // activate pinpuller and LMS
-            pinpuller_pins.burn_wire_1.set_high().ok();
-            lms_control_pins.lms_led_enable.set_high().ok();
-            lms_control_pins.lms_receiver_enable.set_high().ok();
-
-            for _ in 0..60{           
-                // LEAVE PINPULLER ON FOR 60 SECONDS
-                block!(timer.wait()).void_unwrap();
-                sec_elapsed_phase += 1;
-                sec_elapsed_total += 1;
-                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
-                tvac::deployment_sensing(payload_off.as_mut().unwrap(),&mut payload_spi_controller, &mut serial_writer);
-            }
-
-            // disable pinpuller and LMS
-            pinpuller_pins.burn_wire_1.set_low().ok();
-            lms_control_pins.lms_led_enable.set_low().ok();
-            lms_control_pins.lms_receiver_enable.set_low().ok();
-
-            uwriteln!(serial_writer, "").ok();
-            sec_elapsed_phase = 0;
-
-            // ------------------------------------------------------------------------
-            // ---------------------------  Emission  ---------------------------------
-            // ------------------------------------------------------------------------
-            uwriteln!(serial_writer, "ENTERING EMISSION PHASE").ok();
-            // Payload On activated for 44 minutes
-            let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
-            
-            payload.set_cathode_offset_switch(SwitchState::Connected);
-            payload.set_tether_bias_switch(SwitchState::Connected);
-            payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload.set_heater_voltage(HEATER_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-
-            for _ in 0..44*60{
-                // ENTER CODE TO READ SENSORS FOR 44 MINUTES
-                block!(timer.wait()).void_unwrap();
-                sec_elapsed_phase += 1;
-                sec_elapsed_total += 1;
-                uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
-                uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
-                tvac::emission_sensing(&mut payload, &mut payload_spi_controller, &mut serial_writer)
-            }
-
-            payload.set_cathode_offset_switch(SwitchState::Disconnected);
-            payload.set_tether_bias_switch(SwitchState::Disconnected);
-            payload_off = Some(payload.into_disabled_heater().into_disabled_payload());
-
-            uwriteln!(serial_writer, "").ok();
-            sec_elapsed_phase = 0;
-        }
+        payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        payload.set_tether_bias_switch(SwitchState::Connected);
+        delay_cycles(100_000);
+        let perf = tvac::test_repeller(&mut payload, &mut payload_spi_controller, &mut serial_writer);
+        uwriteln!(&mut serial_writer, "{}", perf).ok();
         // let mut payload = payload.into_disabled_heater().into_disabled_payload();
         // idle_loop(&mut led_pins);
+        loop{}
     }
     else {#[allow(clippy::empty_loop)] loop{}}
 }
