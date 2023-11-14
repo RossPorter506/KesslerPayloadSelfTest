@@ -118,7 +118,7 @@ pub mod sensor_equations {
         (((v_adc_millivolts as i32 * 1035)/310) - 45) as u16
     }
     pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32{
-        (v_adc_millivolts as i32 - 2755)*102
+        (2755 - v_adc_millivolts as i32)*102
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32{
         ((v_adc_millivolts as i32 * 10891) / 100)+3708
