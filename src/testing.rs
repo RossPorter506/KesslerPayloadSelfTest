@@ -573,7 +573,7 @@ pub mod heater_mock {
 }
 
 pub mod hvdc_mock {
-    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
+    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 97_671; // 98_150 ohm test resistor in parallel with 20_049_000 repeller resistance
     pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
 
 }
