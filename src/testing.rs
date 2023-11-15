@@ -546,10 +546,14 @@ pub mod pinpuller_mock {
 
     const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
     const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("1.2");
-    const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
+    const DIVIDER_RESISTANCE: Fxd = Fxd::lit("0.4");
+    const SENSE_RESISTANCE: Fxd = Fxd::lit("0.082");
+    const WIRE_RESISTANCE: Fxd = Fxd::lit("0.22");
     const CIRCUIT_RESISTANCE: Fxd = 
-        PINPULLER_MOCK_RESISTANCE
+    WIRE_RESISTANCE
         .unwrapped_add(SENSE_RESISTANCE)
+        .unwrapped_add(DIVIDER_RESISTANCE)
+        .unwrapped_add(PINPULLER_MOCK_RESISTANCE)
         .unwrapped_add(MOSFET_R_ON_RESISTANCE)
         .unwrapped_add(MOSFET_R_ON_RESISTANCE);
     const NUM_PINS: usize = 4;
@@ -573,7 +577,7 @@ pub mod heater_mock {
 }
 
 pub mod hvdc_mock {
-    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 97_671; // 98_150 ohm test resistor in parallel with 20_049_000 repeller resistance
+    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
     pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
 
 }
@@ -950,7 +954,7 @@ impl ManualPerformanceTests{
             let probe_resistance: i32 = 10; // Measure resistance with multimeter
             let wirewound_res: i32 = 1200;  // Measure resistance with multimeter
             let mosfets: i32 = 27*2;
-            let wire_resistance: i32 = 130 + 320;
+            let wire_resistance: i32 = 100 + 130;
             let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms
             
             // Select burn wire 1 to form current loop.        

@@ -142,8 +142,8 @@ pub fn test_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
             spi_bus, 
             debug_writer);
 
-    let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
-    let current_result = calculate_performance_result("Cathode offset current", current_accuracy, 5, 20);
+    let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
+    let current_result = calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
     [voltage_result, current_result]
 }
 
@@ -159,7 +159,7 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
     // Calculate expected voltage and current
-    let expected_voltage_mv: u16 = HEATER_MAX_VOLTAGE_MILLIVOLTS;
+    let expected_voltage_mv: u16 = 3160;
     let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / heater_mock::CIRCUIT_RESISTANCE_MOHMS as u32)
             .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
     dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
