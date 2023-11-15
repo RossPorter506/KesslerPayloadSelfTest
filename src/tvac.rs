@@ -175,8 +175,8 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     [voltage_result, current_result]
 }
 
-pub fn test_repeller<'a, USCI: SerialUsci>(
-    payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+pub fn test_repeller<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
+    payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> PerformanceResult<'a> {
 

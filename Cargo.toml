@@ -36,6 +36,7 @@ opt-level = "z"
 codegen-units = 1
 lto = "fat"
 debug = true
+strip = "debuginfo"
 
 [profile.dev.package."*"]
 opt-level = "z"
