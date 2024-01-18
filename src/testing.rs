@@ -847,8 +847,8 @@ impl ManualPerformanceTests{
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
-        let voltage_result = calculate_performance_result("Cathode offset voltage", current_accuracy, 5, 20);
-        voltage_result
+        let current_result = calculate_performance_result("Cathode offset current", current_accuracy, 5, 20);
+        current_result
     }
 
     pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
@@ -888,6 +888,48 @@ impl ManualPerformanceTests{
 
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
         voltage_result
+    }
+
+    pub fn test_tether_bias_current<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+        spi_bus: &'a mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>,
+        serial_reader: &mut Rx<USCI> ) -> PerformanceResult<'a> {
+        
+        const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
+        let mut current_accuracy: Fxd = Fxd::ZERO;
+
+        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) 
+                                            + output_percentage *(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS)) / 100;
+            
+            let expected_voltage_mv: u32 = output_voltage_mv; // assume zero error between target voltage and actual voltage
+            let expected_current_ua: i16 = ((1000*expected_voltage_mv) / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS)) as i16;
+            dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ua);
+    
+            //Manually measure the current
+            uwrite!(debug_writer,"Measure current and input (in uA): ").ok();
+            let actual_current_ua = read_num(debug_writer, serial_reader);
+            uwriteln!(debug_writer, "").ok();
+
+            // Measure current
+            let measured_current_ua: i32 = payload.get_tether_bias_current_microamps(spi_bus);
+            dbg_uwriteln!(debug_writer, "Measured current is: {}uA", measured_current_ua);
+    
+            //Determine accuracy
+            let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
+            uwriteln!(debug_writer,"Calculated current millirpd: {}", (current_rpd * 1000).to_num::<i32>()).ok();
+            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16); 
+        }
+
+        // Set back to zero
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
+
+        let current_result = calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
+        current_result
     }
 
     pub fn test_heater_voltage<'a, USCI: SerialUsci>(
