@@ -113,11 +113,11 @@ fn main() -> ! {
         
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
 
-        uwriteln!(serial_writer, "==========TVAC TEST FIRMWARE==========").ok();
+        uwriteln!(serial_writer, "==========TVAC EMITTER TEST FIRMWARE==========").ok();
         delay_cycles(2_000_000);
 
         let mut payload = payload.into_enabled_heater();
-        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
+        AutomatedPerformanceTests::full_system_emitter_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
 
         led_pins.green_led.set_high().ok();
@@ -193,9 +193,9 @@ fn main() -> ! {
             
             payload.set_cathode_offset_switch(SwitchState::Connected);
             payload.set_tether_bias_switch(SwitchState::Connected);
-            payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-            payload.set_heater_voltage(3160, &mut payload_spi_controller);
+            payload.set_cathode_offset_voltage(200_000, &mut payload_spi_controller);
+            payload.set_tether_bias_voltage(200_000, &mut payload_spi_controller);
+            payload.set_heater_voltage(2_000, &mut payload_spi_controller);
             led_pins.red_led.set_high().ok();
 
             for _ in 0..44*60{
