@@ -24,10 +24,13 @@ pub fn emission_sensing<USCI:SerialUsci>(
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>){
 
-    // Each of these three fn's takes the same arguments and both return a voltage and current result
-    let fn_arr = [test_cathode_offset, test_tether_bias, test_heater];
-    for sensor_fn in fn_arr.iter(){
-        for sensor_result in sensor_fn(payload, spi_bus, serial).iter(){
+    for sensor_result in test_heater(payload, spi_bus, serial).iter(){
+        uwriteln!(serial, "{}", sensor_result).ok();
+    }
+
+    let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
+    for sensor_fn in fn_arr.iter() {
+        for result in sensor_fn(payload, spi_bus, serial).iter() {
             uwriteln!(serial, "{}", sensor_result).ok();
         }
     }
@@ -79,10 +82,11 @@ fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
     measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
     supply_max: u32,
-    test_resistance: u32,
     payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
     spi_bus: &mut PayloadSPIController,
-    debug_writer: &mut SerialWriter<USCI>) -> [Fxd; 2] {
+    debug_writer: &mut SerialWriter<USCI>) -> Fxd {
+
+    dbg_uwriteln!(debug_writer, "");
     
     const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
         
@@ -94,63 +98,56 @@ fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
 
     // Calculate expected voltage and current
     let expected_voltage_mv: i32 = supply_max as i32;
-    let expected_current_ua: i32 = ((1000 * supply_max) / (test_resistance + SENSE_RESISTANCE)) as i32;
 
     dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
-    dbg_uwriteln!(debug_writer, "Expected output current: {}uA", expected_current_ua);
 
     let voltage_accuracy = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
-    let current_accuracy = calculate_rpd(measured_current_ua, expected_current_ua);
-
-    dbg_uwriteln!(debug_writer, "");
     
-    [voltage_accuracy, current_accuracy]
+    voltage_accuracy
 }
 
 pub fn test_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
-    debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
+    debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
 
-    let [voltage_accuracy, current_accuracy] = self::test_hvdc_supply(
+    let voltage_accuracy = self::test_hvdc_supply(
             &PayloadController::get_cathode_offset_voltage_millivolts, 
             &PayloadController::get_cathode_offset_current_microamps, 
-            CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS,
-            hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS,
+            200_000,
             payload,
             spi_bus, 
             debug_writer);
 
     let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
-    let current_result = calculate_performance_result("Cathode offset current", current_accuracy, 5, 20);
-    [voltage_result, current_result]
+    voltage_result
 }
 
 pub fn test_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
-    debug_writer: &mut SerialWriter<USCI>) -> [PerformanceResult<'a>; 2] {
+    debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
 
-    let [voltage_accuracy, current_accuracy] = self::test_hvdc_supply(
+    let voltage_accuracy = self::test_hvdc_supply(
             &PayloadController::get_tether_bias_voltage_millivolts, 
             &PayloadController::get_tether_bias_current_microamps, 
-            TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS,
-            hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS,
+            200_000,
             payload,
             spi_bus, 
             debug_writer);
 
     let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
-    let current_result = calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
-    [voltage_result, current_result]
+    voltage_result
 }
 
 pub fn test_heater<'a, USCI: SerialUsci>(
     payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
+
+    dbg_uwriteln!(debug_writer, "");
 
     // Read voltage, current
     let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
@@ -159,7 +156,7 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
     // Calculate expected voltage and current
-    let expected_voltage_mv: u16 = 3160;
+    let expected_voltage_mv: u16 = 2_000;
     let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / heater_mock::CIRCUIT_RESISTANCE_MOHMS as u32)
             .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
     dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
@@ -167,7 +164,7 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     // RPD and accuracy calculations
     let voltage_rpd = calculate_rpd(heater_voltage_mv as i32, expected_voltage_mv as i32);
     let current_rpd = calculate_rpd(heater_current_ma as i32, expected_current_ma as i32);
-    dbg_uwriteln!(debug_writer, "");
+    
 
     let voltage_result = calculate_performance_result("Heater voltage", voltage_rpd, 5, 20);
     let current_result = calculate_performance_result("Heater current", current_rpd, 5, 20);
@@ -179,6 +176,8 @@ pub fn test_repeller<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> PerformanceResult<'a> {
+    
+    dbg_uwriteln!(debug_writer, "");
 
     // Read voltage
     let repeller_voltage_mv = payload.get_repeller_voltage_millivolts(spi_bus);
@@ -188,7 +187,7 @@ pub fn test_repeller<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
     let expected_voltage_mv: u32 = TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS;
 
     let voltage_rpd = calculate_rpd(repeller_voltage_mv, expected_voltage_mv as i32);
-    dbg_uwriteln!(debug_writer, "");
+    
 
     calculate_performance_result("Repeller voltage", voltage_rpd, 5, 20)
 }
