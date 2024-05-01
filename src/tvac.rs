@@ -19,24 +19,24 @@ use crate::testing::{calculate_performance_result, calculate_rpd, in_place_avera
 
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 
-pub fn emission_sensing<USCI:SerialUsci>(
-    payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
-    spi_bus: &mut PayloadSPIController, 
-    serial: &mut SerialWriter<USCI>){
+// pub fn emission_sensing<USCI:SerialUsci>(
+//     payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+//     spi_bus: &mut PayloadSPIController, 
+//     serial: &mut SerialWriter<USCI>){
 
-    for sensor_result in test_heater(payload, spi_bus, serial).iter(){
-        uwriteln!(serial, "{}", sensor_result).ok();
-    }
+//     for sensor_result in test_heater(payload, spi_bus, serial).iter(){
+//         uwriteln!(serial, "{}", sensor_result).ok();
+//     }
 
-    let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
-    for sensor_fn in fn_arr.iter() {
-        for result in sensor_fn(payload, spi_bus, serial).iter() {
-            uwriteln!(serial, "{}", sensor_result).ok();
-        }
-    }
-    uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
-    print_temperatures(payload, spi_bus, serial);
-}
+//     let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
+//     for sensor_fn in fn_arr.iter() {
+//         for result in sensor_fn(payload, spi_bus, serial).iter() {
+//             uwriteln!(serial, "{}", sensor_result).ok();
+//         }
+//     }
+//     uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
+//     print_temperatures(payload, spi_bus, serial);
+// }
 
 pub fn deployment_sensing<USCI:SerialUsci>(
     payload: &mut PayloadController<{PayloadOff}, {HeaterOff}>, 
