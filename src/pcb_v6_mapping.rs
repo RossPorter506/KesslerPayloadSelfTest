@@ -97,8 +97,8 @@ pub mod sensor_locations {
     pub const LMS_RECEIVER_1_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN1};
     pub const LMS_RECEIVER_2_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN2};
     pub const LMS_RECEIVER_3_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN3};
-    pub const APERTURE_CURRENT_SENSOR:  MiscSensor = MiscSensor{channel: ADCChannel::IN4};
     /**********                    Nothing after channel 4                     **********/
+    pub const APERTURE_CURRENT_SENSOR:  MiscSensor = MiscSensor{channel: ADCChannel::IN5};
 }
 pub mod power_supply_locations {
     use crate::{dac::*, digipot::*};
@@ -142,7 +142,7 @@ pub mod sensor_equations {
     }
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-        (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10_000) as u16
+        (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10) as u16
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
