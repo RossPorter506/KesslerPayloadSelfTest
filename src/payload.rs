@@ -106,7 +106,7 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
         }
     }
     // Aperture
-    pub fn get_aperture_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
+    pub fn get_aperture_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
         let adc_voltage = self.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
         aperture_current_sensor_eq(adc_voltage)
     }

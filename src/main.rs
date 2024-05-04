@@ -49,7 +49,7 @@ use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIV
 
 #[allow(unused_mut)]
 #[entry]
-fn main() {
+fn main() -> !{
     if let Some(periph) = msp430fr2355::Peripherals::take() {
         let _wdt = Wdt::constrain(periph.WDT_A);
         
@@ -75,7 +75,7 @@ fn main() {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload().into_enabled_heater();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -113,21 +113,24 @@ fn main() {
         
         // Name of test
         uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
+        uwriteln!(serial_writer, "").ok();
         delay_cycles(2_000_000);
 
 
         // Automated performance test to ensure setup is correct
         uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
-        let fn_arr = [AutomatedPerformanceTests::test_cathode_offset_voltage, AutomatedPerformanceTests::test_tether_bias_voltage];
+        let fn_arr = [AutomatedPerformanceTests::test_cathode_offset_voltage];
         for sensor_fn in fn_arr.iter(){
             uwriteln!(serial_writer, "{}", sensor_fn(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
         }
         uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
-
-
-        // Warning to switch off power supply if the test specimen is not in vacuum
-        uwriteln!(serial_writer, "========== If the vacuum chamber is not depressurised, please turn off power supply now ==========").ok();
+        uwriteln!(serial_writer, "").ok();
         delay_cycles(2_000_000);
+
+        // // Warning to switch off power supply if the test specimen is not in vacuum
+        uwriteln!(serial_writer, "========== If the vacuum chamber is not depressurised, please turn off power supply now ==========").ok();
+        uwriteln!(serial_writer, "").ok();
+        delay_cycles(5_000_000);
         uwriteln!(serial_writer, "========== The vacuum test will initiate in T-: ==========").ok();
         
         for i in 0..20{
@@ -140,6 +143,7 @@ fn main() {
         payload.into_disabled_heater().into_disabled_payload();
         uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
         
+        #[allow(clippy::empty_loop)] loop{}
     }
     
     else {#[allow(clippy::empty_loop)] loop{}}

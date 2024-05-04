@@ -141,8 +141,8 @@ pub mod sensor_equations {
         ((2576 - v_adc_millivolts as i32)*883)/500
     }
 
-    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-        (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10) as u16
+    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> i32 {
+        (((-(v_adc_millivolts as i32)+2500)*13)/3) as i32
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {

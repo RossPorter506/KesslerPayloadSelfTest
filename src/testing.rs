@@ -14,6 +14,8 @@ use crate::serial::{read_num, TextColours::*};
 use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 
+use self::sensor_equations::aperture_current_sensor_eq;
+
 // We use this type a lot. 
 /// 64 bits long, 32 fractional bits, signed. 
 /// 
@@ -576,35 +578,37 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController,
             serial_writer: &mut SerialWriter<USCI>) {
         
-        let mut accuracy: Fxd = Fxd::ZERO;
-        payload.set_cathode_offset_switch(SwitchState::Connected);
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, spi_bus);
+        payload.set_cathode_offset_switch(SwitchState::Connected);
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
         
-        for cycles in 1..3{
-            for heater_voltage_mv in (100..3000).step_by(100){
+        for cycles in 1..4{
+            for heater_voltage_mv in (900..3100).step_by(100){
                 uwriteln!(serial_writer, "Heater voltage set to: {}mV", heater_voltage_mv).ok();
                 payload.set_heater_voltage(heater_voltage_mv, spi_bus);
+                delay_cycles(1_000_000);
     
                 let measured_heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
                 let measured_aperture_adc_mv = payload.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
-                let measured_aperture_current_ua = payload.get_aperture_current_microamps(spi_bus);            
-                
-    
+                let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);     
+                          
                 uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
                 uwriteln!(serial_writer, "Measured cathode offset voltage: {}mV", measured_cathode_offset_voltage_mv).ok();
-                uwriteln!(serial_writer, "Measured cathode offset current: {}uA", measured_cathode_offset_current_ua).ok();
+                uwriteln!(serial_writer, "Measured cathode offset current: {}uA", measured_cathode_offset_current_ua).ok();                
                 uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
                 uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok();
+                uwriteln!(serial_writer, "").ok();
+                delay_cycles(10_000_000);
             }
-        }        
+        }
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
-
-        
     }   
-}
+}   
+
 
 /// Tests that require human intervention. These are pass/fail tests.
 pub struct ManualFunctionalTests{}
