@@ -75,7 +75,7 @@ fn main() -> !{
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload().into_enabled_heater();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -138,7 +138,22 @@ fn main() -> !{
             delay_cycles(1_000_000);
         }        
 
+        let measured_heater_voltage_mv = payload.get_heater_voltage_millivolts(&mut payload_spi_controller);
+        let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(&mut payload_spi_controller);
+        let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(&mut payload_spi_controller);
+        let measured_aperture_adc_mv = payload.misc_adc.read_voltage_from(&pcb_mapping::sensor_locations::APERTURE_CURRENT_SENSOR, &mut payload_spi_controller);
+        let measured_aperture_current_ua = pcb_mapping::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);     
+                  
+        uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
+        uwriteln!(serial_writer, "Measured cathode offset voltage: {}mV", measured_cathode_offset_voltage_mv).ok();
+        uwriteln!(serial_writer, "Measured cathode offset current: {}uA", measured_cathode_offset_current_ua).ok();                
+        uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
+        uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok();
+        uwriteln!(serial_writer, "").ok();
+        delay_cycles(10_000_000);
+
         // Perform electron emission test
+        let mut payload = payload.into_enabled_heater();
         AutomatedPerformanceTests::test_aperture_current_sensor(&mut payload, &mut payload_spi_controller,&mut serial_writer);
         payload.into_disabled_heater().into_disabled_payload();
         uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
