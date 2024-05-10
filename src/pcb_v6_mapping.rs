@@ -115,7 +115,7 @@ pub mod sensor_equations {
     use fixed::FixedI64;
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16{
-        (((v_adc_millivolts as i32 * 1035)/310) - 45) as u16
+        (((v_adc_millivolts as i32 * 1035)/310) - 45).max(0) as u16
     }
     pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32{
         (2755 - v_adc_millivolts as i32)*102
