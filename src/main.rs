@@ -19,6 +19,7 @@ use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv},
     clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
     timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
 use nb::block;
+use tvac::test_board_aperture_current_sensor;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -35,7 +36,7 @@ mod pcb_mapping { include!("pcb_v6_mapping.rs"); }
 use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
 mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, SckPolarity::IdleLow};
 mod dac; use dac::DAC;
-mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
+mod adc; use adc::{ApertureTestADC, MiscADC, TemperatureADC, TetherADC};
 mod digipot; use digipot::Digipot;
 mod payload; use payload::{PayloadBuilder, SwitchState, PayloadState, PayloadState::*, HeaterState, HeaterState::*};
 mod serial; use serial::SerialWriter;
@@ -111,38 +112,42 @@ fn main() -> !{
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
 
         
-        // Name of test
-        uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(2_000_000);
+        // // Name of test
+        // uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
+        // uwriteln!(serial_writer, "").ok();
+        // delay_cycles(2_000_000);
 
 
-        // Automated performance test to ensure setup is correct
-        uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
-        let fn_arr = [AutomatedPerformanceTests::test_cathode_offset_voltage];
-        for sensor_fn in fn_arr.iter(){
-            uwriteln!(serial_writer, "{}", sensor_fn(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
-        }
-        uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(2_000_000);
+        // // Automated performance test to ensure setup is correct
+        // uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
+        // let fn_arr = [AutomatedPerformanceTests::test_cathode_offset_voltage];
+        // for sensor_fn in fn_arr.iter(){
+        //     uwriteln!(serial_writer, "{}", sensor_fn(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
+        // }
+        // uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
+        // uwriteln!(serial_writer, "").ok();
+        // delay_cycles(2_000_000);
 
-        // // Warning to switch off power supply if the test specimen is not in vacuum
-        uwriteln!(serial_writer, "========== If the vacuum chamber is not depressurised, please turn off power supply now ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(5_000_000);
-        uwriteln!(serial_writer, "========== The vacuum test will initiate in T-: ==========").ok();
+        // // // Warning to switch off power supply if the test specimen is not in vacuum
+        // uwriteln!(serial_writer, "========== If the vacuum chamber is not depressurised, please turn off power supply now ==========").ok();
+        // uwriteln!(serial_writer, "").ok();
+        // delay_cycles(5_000_000);
+        // uwriteln!(serial_writer, "========== The vacuum test will initiate in T-: ==========").ok();
         
-        for i in 0..20{
-            uwriteln!(serial_writer, "========== {} s ==========", 20-i).ok();
-            delay_cycles(1_000_000);
-        }        
+        // for i in 0..20{
+        //     uwriteln!(serial_writer, "========== {} s ==========", 20-i).ok();
+        //     delay_cycles(1_000_000);
+        // }        
 
-        // Perform electron emission test
-        AutomatedPerformanceTests::test_aperture_current_sensor(&mut payload, &mut payload_spi_controller,&mut serial_writer);
-        payload.into_disabled_heater().into_disabled_payload();
-        uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
-        
+        // // Perform electron emission test
+        // AutomatedPerformanceTests::test_aperture_current_sensor(&mut payload, &mut payload_spi_controller,&mut serial_writer);
+        // payload.into_disabled_heater().into_disabled_payload();
+        // uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
+
+        // test_board_aperture_current_sensor(&mut payload, &mut payload_spi_controller, &mut serial_rx_pin, &mut serial_writer);
+        // AutomatedFunctionalTests::temperature_adc_functional_test(&mut payload, &mut paylo);
+        AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
+// 
         #[allow(clippy::empty_loop)] loop{}
     }
     
@@ -182,7 +187,8 @@ fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bu
     let tether_adc = TetherADC::new(cs_pins.tether_adc);
     let temperature_adc = TemperatureADC::new(cs_pins.temperature_adc);
     let misc_adc = MiscADC::new(cs_pins.misc_adc);
-    PayloadPeripherals { digipot, dac, tether_adc, temperature_adc, misc_adc }
+    let aperture_test_adc = ApertureTestADC::new(cs_pins.aperture_test_adc);
+    PayloadPeripherals { digipot, dac, tether_adc, temperature_adc, misc_adc, aperture_test_adc}
 }
 
 // Takes raw port peripherals and returns actually useful pin collections 
@@ -227,7 +233,7 @@ let payload_control_pins = PayloadControlPins{
     tether_switch: port6.pin1.to_output(),};
 
 let lms_control_pins = TetherLMSPins{   
-    lms_receiver_enable: port3.pin4.to_output(), 
+    //lms_receiver_enable: port3.pin4.to_output(), 
     lms_led_enable:      port3.pin5.to_output(),};
 
 let deploy_sense_pins = DeploySensePins{
@@ -241,7 +247,8 @@ let payload_peripheral_cs_pins = PayloadSPIChipSelectPins::new(
     port6.pin3.to_output(), 
     port6.pin2.to_output(), 
     port6.pin0.to_output(), 
-    port5.pin4.to_output(), );
+    port5.pin4.to_output(),
+    port3.pin4.to_output(),);
 
 let debug_serial_pins = DebugSerialPins{
     rx: port4.pin2.to_output().to_alternate1(),

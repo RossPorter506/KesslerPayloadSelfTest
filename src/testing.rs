@@ -47,9 +47,9 @@ impl AutomatedFunctionalTests{
 
         uwriteln!(serial, "{}", Self::heater_functional_test(payload, spi_bus, serial)).ok();
 
-        for lms_channel in Self::lms_functional_test(payload, lms_pins, spi_bus, serial).iter(){
-            uwriteln!(serial, "{}", lms_channel).ok();
-        }
+        // for lms_channel in Self::lms_functional_test(payload, lms_pins, spi_bus, serial).iter(){
+        //     uwriteln!(serial, "{}", lms_channel).ok();
+        // }
 
         uwriteln!(serial, "==== Automated Functional Tests Complete ====").ok();
     }
@@ -172,47 +172,47 @@ impl AutomatedFunctionalTests{
                                           && ((max_voltage_mv as u32) > (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32) * 9/10) }
     }
     
-    /// Enable receivers, record ambient values. Enable LEDs, record values. Return ok if on_value > 2 * ambient.
-    /// 
-    /// Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
-    /// Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
+    // Enable receivers, record ambient values. Enable LEDs, record values. Return ok if on_value > 2 * ambient.
+    //
+    // Setup: Connect LMS board, test in a room with minimal (or at least uniform) IR interference. 
+    // Dependencies: LMS power switches, misc ADC, LMS LEDs, LMS receivers
     pub fn lms_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI: SerialUsci>(
             payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
             lms_control: &'a mut TetherLMSPins, 
             spi_bus: &'a mut PayloadSPIController,
-            serial_writer: &mut SerialWriter<USCI>) -> [SensorResult<'a>;3] {
-        let mut ambient_counts: [u16; 3] = [0; 3];
-        let mut on_counts: [u16; 3] = [0; 3];
+            serial_writer: &mut SerialWriter<USCI>){
+            //serial_writer: &mut SerialWriter<USCI>) -> [SensorResult<'a>;3] {
+        // let mut ambient_counts: [u16; 3] = [0; 3];
+        // let mut on_counts: [u16; 3] = [0; 3];
 
-        // Enable phototransistors
-        lms_control.lms_led_enable.set_low().ok();
-        lms_control.lms_receiver_enable.set_high().ok();
-        delay_cycles(100_000);
+        // // Enable phototransistors
+        // lms_control.lms_led_enable.set_low().ok();
+        // lms_control.lms_receiver_enable.set_high().ok();
+        // delay_cycles(100_000);
 
-        // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
-            ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
-        }
-        dbg_uwriteln!(serial_writer, "Read ambient counts as: {:?}", ambient_counts);
+        // // Record max voltage/light value
+        // for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
+        //     ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
+        // }
+        // dbg_uwriteln!(serial_writer, "Read ambient counts as: {:?}", ambient_counts);
 
-        // Enable LEDs
-        lms_control.lms_led_enable.set_high().ok();
-        delay_cycles(100_000);
+        // // Enable LEDs
+        // lms_control.lms_led_enable.set_high().ok();
+        // delay_cycles(100_000);
 
-        // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
-            on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
-        }
-        dbg_uwriteln!(serial_writer, "Read max counts as: {:?}", on_counts);
+        // // Record max voltage/light value
+        // for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
+        //     on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
+        // }
+        // dbg_uwriteln!(serial_writer, "Read max counts as: {:?}", on_counts);
 
-        lms_control.lms_receiver_enable.set_low().ok();
-        lms_control.lms_led_enable.set_low().ok();
+        // lms_control.lms_receiver_enable.set_low().ok();
+        // lms_control.lms_led_enable.set_low().ok();
 
-        [SensorResult{name: "Length measurement system 1", result: (on_counts[0] > 2*ambient_counts[0])}, 
-         SensorResult{name: "Length measurement system 2", result: (on_counts[1] > 2*ambient_counts[1])}, 
-         SensorResult{name: "Length measurement system 3", result: (on_counts[2] > 2*ambient_counts[2])}]
+        // [SensorResult{name: "Length measurement system 1", result: (on_counts[0] > 2*ambient_counts[0])}, 
+        //  SensorResult{name: "Length measurement system 2", result: (on_counts[1] > 2*ambient_counts[1])}, 
+        //  SensorResult{name: "Length measurement system 3", result: (on_counts[2] > 2*ambient_counts[2])}]
     }
-
 }
 
 /// Rather than using percent error (which isn't defined when the actual value is zero), we use Relative Percent Difference (RPD).
