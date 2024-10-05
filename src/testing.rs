@@ -184,29 +184,29 @@ impl AutomatedFunctionalTests{
         let mut ambient_counts: [u16; 3] = [0; 3];
         let mut on_counts: [u16; 3] = [0; 3];
 
-        // Enable phototransistors
-        lms_control.lms_led_enable.set_low().ok();
-        lms_control.lms_receiver_enable.set_high().ok();
-        delay_cycles(100_000);
+        // // Enable phototransistors
+        // lms_control.lms_led_enable.set_low().ok();
+        // lms_control.lms_receiver_enable.set_high().ok();
+        // delay_cycles(100_000);
 
-        // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
-            ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
-        }
-        dbg_uwriteln!(serial_writer, "Read ambient counts as: {:?}", ambient_counts);
+        // // Record max voltage/light value
+        // for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
+        //     ambient_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
+        // }
+        // dbg_uwriteln!(serial_writer, "Read ambient counts as: {:?}", ambient_counts);
 
-        // Enable LEDs
-        lms_control.lms_led_enable.set_high().ok();
-        delay_cycles(100_000);
+        // // Enable LEDs
+        // lms_control.lms_led_enable.set_high().ok();
+        // delay_cycles(100_000);
 
-        // Record max voltage/light value
-        for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
-            on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
-        }
-        dbg_uwriteln!(serial_writer, "Read max counts as: {:?}", on_counts);
+        // // Record max voltage/light value
+        // for (n, sensor) in [LMS_RECEIVER_1_SENSOR, LMS_RECEIVER_2_SENSOR, LMS_RECEIVER_3_SENSOR].iter().enumerate() {
+        //     on_counts[n] = payload.misc_adc.read_count_from(sensor, spi_bus.borrow());
+        // }
+        // dbg_uwriteln!(serial_writer, "Read max counts as: {:?}", on_counts);
 
-        lms_control.lms_receiver_enable.set_low().ok();
-        lms_control.lms_led_enable.set_low().ok();
+        // lms_control.lms_receiver_enable.set_low().ok();
+        // lms_control.lms_led_enable.set_low().ok();
 
         [SensorResult{name: "Length measurement system 1", result: (on_counts[0] > 2*ambient_counts[0])}, 
          SensorResult{name: "Length measurement system 2", result: (on_counts[1] > 2*ambient_counts[1])}, 
@@ -578,10 +578,16 @@ impl AutomatedPerformanceTests{
             spi_bus: &'a mut PayloadSPIController,
             serial_writer: &mut SerialWriter<USCI>) {
         
+        uwriteln!(serial_writer, "Here1").ok();
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, spi_bus);
+        uwriteln!(serial_writer, "Here2").ok();
         payload.set_cathode_offset_switch(SwitchState::Connected);
+        uwriteln!(serial_writer, "Here3").ok();
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        uwriteln!(serial_writer, "Here4").ok();
         payload.set_tether_bias_switch(SwitchState::Disconnected);
+        uwriteln!(serial_writer, "Here5").ok();
+        
         
         for cycles in 1..4{
             for heater_voltage_mv in (900..3100).step_by(100){
@@ -592,7 +598,7 @@ impl AutomatedPerformanceTests{
                 let measured_heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
-                let measured_aperture_adc_mv = payload.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
+                let measured_aperture_adc_mv = payload.aperture_test_adc.read_voltage_from(&APERTURE_TEST_CURRENT_SENSOR, spi_bus);
                 let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);     
                           
                 uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
@@ -601,7 +607,7 @@ impl AutomatedPerformanceTests{
                 uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
                 uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok();
                 uwriteln!(serial_writer, "").ok();
-                delay_cycles(10_000_000);
+                delay_cycles(3_000_000);
             }
         }
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
