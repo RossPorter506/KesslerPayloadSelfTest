@@ -1,6 +1,7 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
+use sensor_equations::aperture_current_sensor_eq;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use crate::delay_cycles;
@@ -202,4 +203,40 @@ pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DO
     let accuracy = calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num());
 
     calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
+}
+
+pub fn test_board_aperture_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+    payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
+    spi_bus: &'a mut PayloadSPIController,
+    serial_reader: &'a mut Rx<USCI>, 
+    serial_writer: &mut SerialWriter<USCI>){
+
+
+        loop{
+            let measured_aperture_adc_mv = payload.aperture_test_adc.read_voltage_from(&APERTURE_TEST_CURRENT_SENSOR, spi_bus);
+            let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);
+            uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
+            uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok(); 
+
+            let tempr = payload.get_temperature_kelvin(&MSP430_TEMPERATURE_SENSOR , spi_bus);
+            uwriteln!(serial_writer, "Temperature: {} Kelvin", tempr).ok(); 
+            delay_cycles(1_000_000);
+        }
+        
+
+        // for actual_aperture_current_ua in [100, 200, 400, 600, 800, 1000, 2000, 4000, 6000, 8000]{
+        //     uwriteln!(serial_writer, "Set actual current to: {}uA", actual_aperture_current_ua).ok();
+        //     uwriteln!(serial_writer, "Press any key to continue").ok();
+        //     let dont_care = read_num(serial_writer, serial_reader);
+        //     delay_cycles(1_000_000); 
+
+        //     let measured_aperture_adc_mv = payload.aperture_test_adc.read_voltage_from(&APERTURE_TEST_CURRENT_SENSOR, spi_bus);
+        //     let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);     
+                                      
+        //     uwriteln!(serial_writer, "Set aperture current: {}uA", actual_aperture_current_ua).ok();                          
+        //     uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
+        //     uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok();
+        //     uwriteln!(serial_writer, "").ok();
+        //     delay_cycles(1_000_000);
+        // }
 }

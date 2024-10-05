@@ -19,6 +19,7 @@ use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv},
     clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
     timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
 use nb::block;
+use tvac::test_board_aperture_current_sensor;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -111,10 +112,10 @@ fn main() -> !{
         // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
 
         
-        // Name of test
-        uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(2_000_000);
+        // // Name of test
+        // uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
+        // uwriteln!(serial_writer, "").ok();
+        // delay_cycles(2_000_000);
 
 
         // Automated performance test to ensure setup is correct
