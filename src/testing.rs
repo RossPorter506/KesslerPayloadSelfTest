@@ -37,7 +37,7 @@ impl AutomatedFunctionalTests{
             serial: &mut SerialWriter<USCI>){
 
         uwriteln!(serial, "==== Automated Functional Tests Start ====").ok();
-        for adc_test_fn in [Self::tether_adc_functional_test, Self::temperature_adc_functional_test, Self::misc_adc_functional_test].iter(){
+        for adc_test_fn in [Self::tether_adc_functional_test, Self::temperature_adc_functional_test, Self::misc_adc_functional_test, Self::aperture_adc_functional_test].iter(){
             uwriteln!(serial, "{}", adc_test_fn(payload, spi_bus.borrow())).ok();
         }
 
@@ -97,6 +97,17 @@ impl AutomatedFunctionalTests{
         let result =Self::test_adc_functional(&mut payload.misc_adc, spi_bus, ADCChannel::IN7);
         SensorResult { name: "Misc ADC", result }
     }
+
+    /// Ask to read channel 7.
+    /// Return success if SPI packet valid
+    /// 
+    /// Dependencies: aperture ADC, Isolated 5V supply, isolators
+    pub fn aperture_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
+        payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
+        spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
+    let result =Self::test_adc_functional(&mut payload.aperture_adc, spi_bus, ADCChannel::IN7);
+    SensorResult { name: "Aperture ADC", result }
+}
 
     /// TODO
     /// 
