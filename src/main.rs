@@ -10,7 +10,7 @@
 
 use embedded_hal::digital::v2::*;
 use msp430_rt::entry;
-use msp430fr2355::{P2, P3, P4, P5, P6, PMM};
+use msp430fr2355::{P1, P2, P3, P4, P5, P6, PMM};
 #[allow(unused_imports)]
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
 #[allow(unused_imports)]
@@ -24,12 +24,12 @@ use panic_never as _;
 
 pub mod pcb_common; // pcb_mapping re-exports these values, so no need to interact with this file.
 // This line lets every other file do 'use pcb_mapping', we only have to change the version once here.
-mod pcb_mapping { include!("pcb_v6_mapping.rs"); }
+mod pcb_mapping { include!("pcb_v7_mapping.rs"); }
 
 use pcb_mapping::{PayloadControlPins, PayloadSPIBitBangPins, DebugSerialPins, LEDPins, PinpullerActivationPins, TetherLMSPins, DeploySensePins, PayloadPeripherals, PayloadSPIChipSelectPins, power_supply_limits::HEATER_MIN_VOLTAGE_MILLIVOLTS};
 mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, SckPolarity::IdleLow};
 mod dac; use dac::DAC;
-mod adc; use adc::{TetherADC,TemperatureADC,MiscADC};
+mod adc; use adc::{ApertureADC, MiscADC, TemperatureADC, TetherADC};
 mod digipot; use digipot::Digipot;
 mod payload; use payload::PayloadBuilder;
 mod serial; use serial::SerialWriter;
@@ -50,7 +50,7 @@ fn main() -> ! {
             mut lms_control_pins, 
             mut deploy_sense_pins, 
             mut payload_peripheral_cs_pins, 
-            debug_serial_pins) = collect_pins(periph.PMM, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
+            debug_serial_pins) = collect_pins(periph.PMM, periph.P1, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
         
         lms_control_pins.lms_led_enable.set_low().ok();
         led_pins.green_led.toggle().ok();
@@ -139,11 +139,12 @@ fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bu
     let tether_adc = TetherADC::new(cs_pins.tether_adc);
     let temperature_adc = TemperatureADC::new(cs_pins.temperature_adc);
     let misc_adc = MiscADC::new(cs_pins.misc_adc);
-    PayloadPeripherals { digipot, dac, tether_adc, temperature_adc, misc_adc }
+    let aperture_adc = ApertureADC::new(cs_pins.aperture_adc);
+    PayloadPeripherals { digipot, dac, tether_adc, temperature_adc, misc_adc, aperture_adc }
 }
 
 // Takes raw port peripherals and returns actually useful pin collections 
-fn collect_pins(pmm: PMM, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
+fn collect_pins(pmm: PMM, p1: P1, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
     PayloadSPIBitBangPins,
     PinpullerActivationPins,
     LEDPins,
@@ -154,7 +155,7 @@ fn collect_pins(pmm: PMM, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
     DebugSerialPins){
 
 let pmm = Pmm::new(pmm);
-
+let port1 = Batch::new(p1).split(&pmm);
 let port2 = Batch::new(p2).split(&pmm);
 let port3 = Batch::new(p3).split(&pmm);
 let port4 = Batch::new(p4).split(&pmm);
@@ -198,7 +199,8 @@ let payload_peripheral_cs_pins = PayloadSPIChipSelectPins::new(
     port6.pin3.to_output(), 
     port6.pin2.to_output(), 
     port6.pin0.to_output(), 
-    port5.pin4.to_output(), );
+    port5.pin4.to_output(), 
+    port1.pin3.to_output());
 
 let debug_serial_pins = DebugSerialPins{
     rx: port4.pin2.to_output().to_alternate1(),

@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use embedded_hal::digital::v2::OutputPin;
 
 use crate::digipot::Digipot; 
-use crate::adc::{TemperatureSensor, TetherADC, MiscADC, TemperatureADC, VccType};
+use crate::adc::{ApertureADC, MiscADC, TemperatureADC, TemperatureSensor, TetherADC, VccType};
 use crate::dac::{DAC, DACCommand};
 use crate::spi::{PayloadSPI, PayloadSPIController, SckPolarity::IdleLow, SckPolarity::IdleHigh, SckPhase::SampleFirstEdge};
 use crate::pcb_mapping::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
@@ -40,6 +40,7 @@ impl PayloadBuilder{
             tether_adc: periph.tether_adc, 
             temperature_adc: periph.temperature_adc, 
             misc_adc: periph.misc_adc, 
+            aperture_adc: periph.aperture_adc,
             dac: periph.dac, 
             digipot: periph.digipot, 
             pins}
@@ -50,39 +51,40 @@ pub struct PayloadController<const PSTATE: PayloadState, const HSTATE: HeaterSta
     pub tether_adc: TetherADC,
     pub temperature_adc: TemperatureADC,
     pub misc_adc: MiscADC,
+    pub aperture_adc: ApertureADC,
     pub dac: DAC,
     pub digipot: Digipot,
     pins: PayloadControlPins,
 }
 impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PSTATE, HSTATE>{
     pub fn return_peripherals(self) -> (PayloadPeripherals, PayloadControlPins){
-        (PayloadPeripherals {tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot}, self.pins)
+        (PayloadPeripherals {tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot}, self.pins)
     }
 }
 // Transition functions
 impl PayloadController<{PayloadOff}, {HeaterOff}>{
     pub fn into_enabled_payload(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
         self.pins.payload_enable.set_high().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins}
     }
 }
 impl PayloadController<{PayloadOn}, {HeaterOff}>{
     pub fn into_enabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOn}> {
         self.pins.heater_enable.set_high().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins}
     }
     pub fn into_disabled_payload(mut self) -> PayloadController<{PayloadOff}, {HeaterOff}> {
         self.pins.payload_enable.set_low().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins}
     }
 }
 impl PayloadController<{PayloadOn}, {HeaterOn}>{
     pub fn into_disabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
         self.pins.heater_enable.set_low().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, dac: self.dac, digipot: self.digipot, 
+        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins}
     }
 }
@@ -107,7 +109,7 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
     }
     // Aperture
     pub fn get_aperture_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
+        let adc_voltage = self.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
         aperture_current_sensor_eq(adc_voltage)
     }
 
