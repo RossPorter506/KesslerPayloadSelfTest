@@ -14,6 +14,11 @@ use critical_section::{with, CriticalSection};
 use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
 use msp430_rt::entry;
 use msp430fr2355::{P1, P2, P3, P4, P5, P6, PMM};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, 
+    serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, 
+    clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
+    timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
+use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -70,7 +75,7 @@ fn main() -> !{
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload().into_enabled_heater();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -114,10 +119,8 @@ fn main() -> !{
 
         // Automated performance test to ensure setup is correct
         uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
-        let fn_arr = [AutomatedPerformanceTests::test_cathode_offset_voltage];
-        for sensor_fn in fn_arr.iter(){
-            uwriteln!(serial_writer, "{}", sensor_fn(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
-        }
+        uwriteln!(serial_writer, "{}", AutomatedPerformanceTests::test_cathode_offset_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
+
         uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
         uwriteln!(serial_writer, "").ok();
         delay_cycles(2_000_000);

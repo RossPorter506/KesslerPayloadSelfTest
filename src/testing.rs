@@ -609,7 +609,7 @@ impl AutomatedPerformanceTests{
                 let measured_heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
-                let measured_aperture_adc_mv = payload.aperture_test_adc.read_voltage_from(&APERTURE_TEST_CURRENT_SENSOR, spi_bus);
+                let measured_aperture_adc_mv = payload.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
                 let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);     
                           
                 uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
