@@ -99,17 +99,6 @@ pub mod sensor_locations {
     pub const LMS_RECEIVER_3_SENSOR:    MiscSensor = MiscSensor{channel: ADCChannel::IN3};
     /**********                    Nothing after channel 4                     **********/
     pub const APERTURE_CURRENT_SENSOR:  MiscSensor = MiscSensor{channel: ADCChannel::IN5};
-
-    // Aperture Test ADC
-    pub const APERTURE_TEST_CURRENT_SENSOR: ApertureTestSensor = ApertureTestSensor{channel: ADCChannel::IN0};
-    /**********                    Nothing after channel 1                     **********/
-    /**********                    Nothing after channel 2                     **********/
-    /**********                    Nothing after channel 3                     **********/
-    /**********                    Nothing after channel 4                     **********/
-    /**********                    Nothing after channel 5                     **********/
-    /**********                    Nothing after channel 6                     **********/
-    /**********                    Nothing after channel 7                     **********/
-
 }
 pub mod power_supply_locations {
     use crate::{dac::*, digipot::*};

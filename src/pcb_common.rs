@@ -18,18 +18,16 @@ pub struct PayloadSPIChipSelectPins{
     pub tether_adc:     TetherADCCSPin, //ADC1, measures voltages and currents from tether circuitry
     pub temperature_adc:TemperatureADCCSPin, //ADC2, measures board temperatures
     pub misc_adc:       MiscADCCSPin, //ADC0, measures everything else
-    pub aperture_test_adc: TetherLMSReceiverEnablePin //For TVAC, used as CS pin for Aperture Test PCB
 }
 impl PayloadSPIChipSelectPins {
-    pub fn new(mut digipot: DigipotCSPin, mut dac: DACCSPin, mut tether_adc: TetherADCCSPin, mut temperature_adc: TemperatureADCCSPin, mut misc_adc: MiscADCCSPin, mut aperture_test_adc: TetherLMSReceiverEnablePin) -> PayloadSPIChipSelectPins{
+    pub fn new(mut digipot: DigipotCSPin, mut dac: DACCSPin, mut tether_adc: TetherADCCSPin, mut temperature_adc: TemperatureADCCSPin, mut misc_adc: MiscADCCSPin) -> PayloadSPIChipSelectPins{
         digipot.set_high().ok(); // in lieu of accepting stateful output pins just set them high in the constructor
         dac.set_high().ok();
         tether_adc.set_high().ok();
         temperature_adc.set_high().ok();
         misc_adc.set_high().ok();
-        aperture_test_adc.set_high().ok();
 
-        PayloadSPIChipSelectPins{digipot, dac, tether_adc, temperature_adc, misc_adc, aperture_test_adc}
+        PayloadSPIChipSelectPins{digipot, dac, tether_adc, temperature_adc, misc_adc}
     }
 }
 
@@ -71,7 +69,7 @@ pub struct DeploySensePins{
 }
 
 pub struct TetherLMSPins{
-    // pub lms_receiver_enable: TetherLMSReceiverEnablePin,
+    pub lms_receiver_enable: TetherLMSReceiverEnablePin,
     pub lms_led_enable:      TetherLMSLEDEnablePin,
 }
 
@@ -88,5 +86,4 @@ pub struct PayloadPeripherals{
     pub tether_adc:     TetherADC, 
     pub temperature_adc:TemperatureADC,
     pub misc_adc:       MiscADC,
-    pub aperture_test_adc: ApertureTestADC,
 }

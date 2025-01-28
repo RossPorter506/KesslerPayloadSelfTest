@@ -14,7 +14,6 @@ pub enum TargetADC {
 	TetherADC,
 	TemperatureADC,
 	MiscADC,
-    ApertureTestADC,
 }
 #[derive(PartialEq,Copy,Clone)]
 pub enum ADCChannel {
@@ -31,14 +30,12 @@ pub enum ADCChannel {
 pub type TetherADC      = ADC<TetherADCCSPin, TetherSensor, ISOLATED_ADC_VCC_VOLTAGE_MILLIVOLTS>;
 pub type TemperatureADC = ADC<TemperatureADCCSPin, TemperatureSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>;
 pub type MiscADC        = ADC<MiscADCCSPin, MiscSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>;
-pub type ApertureTestADC        = ADC<TetherLMSReceiverEnablePin, ApertureTestSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>;
 
 // Generic ADC chip select pin type 
 pub trait ADCCSPin: OutputPin{}
 impl ADCCSPin for TetherADCCSPin{}
 impl ADCCSPin for TemperatureADCCSPin{}
 impl ADCCSPin for MiscADCCSPin{}
-impl ADCCSPin for TetherLMSReceiverEnablePin{}
 
 //Types to make sure that we can't read sensor X from ADC Y, because otherwise voltage conversion will be incorrect, etc.
 pub trait ADCSensor{fn channel(&self) -> ADCChannel;}
@@ -48,8 +45,6 @@ pub struct MiscSensor {pub channel: ADCChannel}
 impl ADCSensor for MiscSensor{fn channel(&self) -> ADCChannel {self.channel}}
 pub struct TemperatureSensor {pub channel: ADCChannel, pub vcc: VccType}
 impl ADCSensor for TemperatureSensor{fn channel(&self) -> ADCChannel {self.channel}}
-pub struct ApertureTestSensor {pub channel: ADCChannel}
-impl ADCSensor for ApertureTestSensor{fn channel(&self) -> ADCChannel {self.channel}}
 
 pub enum VccType {
     LMS, // 3V3
@@ -79,11 +74,6 @@ impl TemperatureADC{
 impl MiscADC{
     pub fn new(cs_pin: MiscADCCSPin) -> MiscADC {
         ADC::<MiscADCCSPin, MiscSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>{cs_pin, _adc_type: PhantomData}
-    }
-}
-impl ApertureTestADC{
-    pub fn new(cs_pin: TetherLMSReceiverEnablePin) -> ApertureTestADC {
-        ADC::<TetherLMSReceiverEnablePin, ApertureTestSensor, ADC_VCC_VOLTAGE_MILLIVOLTS>{cs_pin, _adc_type: PhantomData}
     }
 }
 
