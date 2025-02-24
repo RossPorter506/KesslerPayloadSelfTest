@@ -4,7 +4,6 @@ use embedded_hal::digital::v2::OutputPin;
 
 // Structures that group commonly used pins together
 use crate::pcb_mapping::pin_name_types::*;
-use crate::pcb_mapping::sensor_equations::aperture_current_sensor_eq;
 use crate::{Digipot, adc::*, dac::DAC};
 pub struct LEDPins{
     pub red_led: RedLEDPin,

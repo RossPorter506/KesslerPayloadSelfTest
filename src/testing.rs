@@ -14,8 +14,6 @@ use crate::serial::{read_num, TextColours::*};
 use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 
-use self::sensor_equations::aperture_current_sensor_eq;
-
 // We use this type a lot. 
 /// 64 bits long, 32 fractional bits, signed. 
 /// 
@@ -610,7 +608,7 @@ impl AutomatedPerformanceTests{
                 let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
                 let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
                 let measured_aperture_adc_mv = payload.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
-                let measured_aperture_current_ua = aperture_current_sensor_eq(measured_aperture_adc_mv);     
+                let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);     
                           
                 uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
                 uwriteln!(serial_writer, "Measured cathode offset voltage: {}mV", measured_cathode_offset_voltage_mv).ok();
@@ -1153,7 +1151,7 @@ impl ManualPerformanceTests{
         payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
         spi_bus: &mut PayloadSPIController, 
         debug_writer: &'a mut SerialWriter<USCI>,
-        serial_reader: &'a mut Rx<USCI>){ // Does not return
+        serial_reader: &'a mut Rx<USCI>) -> ! { // Does not return
     
         const TEMP_SENSORS: [(TemperatureSensor, &str); 8] = [
             (LMS_EMITTER_TEMPERATURE_SENSOR,        "LMS Emitter"),

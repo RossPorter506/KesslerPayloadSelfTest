@@ -108,38 +108,8 @@ fn main() -> !{
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
         
-        // AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-
-        
-        // Name of test
-        uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(2_000_000);
-
-
-        // Automated performance test to ensure setup is correct
-        uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
-        uwriteln!(serial_writer, "{}", AutomatedPerformanceTests::test_cathode_offset_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer)).ok();
-
-        uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(2_000_000);
-
-        // // Warning to switch off power supply if the test specimen is not in vacuum
-        uwriteln!(serial_writer, "========== If the vacuum chamber is not depressurised, please turn off power supply now ==========").ok();
-        uwriteln!(serial_writer, "").ok();
-        delay_cycles(5_000_000);
-        uwriteln!(serial_writer, "========== The vacuum test will initiate in T-: ==========").ok();
-        
-        for i in 0..20{
-            uwriteln!(serial_writer, "========== {} s ==========", 20-i).ok();
-            delay_cycles(1_000_000);
-        }        
-
-        // Perform electron emission test
-        AutomatedPerformanceTests::test_aperture_current_sensor(&mut payload, &mut payload_spi_controller,&mut serial_writer);
-        payload.into_disabled_heater().into_disabled_payload();
-        uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
+        tvac::aperture_current_sense_validation(serial_writer, &mut payload, payload_spi_controller);
+        let mut payload = payload.into_disabled_heater().into_disabled_payload();
         
         #[allow(clippy::empty_loop)] loop{}
     }
