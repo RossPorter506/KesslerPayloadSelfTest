@@ -1,8 +1,11 @@
-use embedded_hal::digital::v2::{OutputPin, InputPin};
-use msp430fr2355::E_USCI_A1;
+use embedded_hal::{digital::v2::{OutputPin, InputPin}, timer::CountDown};
+use msp430fr2355::{E_USCI_A1, TB0};
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
+use msp430fr2x5x_hal::timer::Timer;
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
+use nb::block;
 use ufmt::{uWrite, uwrite, uwriteln};
+use void::ResultVoidExt;
 
 use crate::delay_cycles;
 use crate::payload::{PayloadController, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
@@ -20,24 +23,23 @@ use crate::testing::{calculate_performance_result, calculate_rpd, in_place_avera
 
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 
-// pub fn emission_sensing<USCI:SerialUsci>(
-//     payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
-//     spi_bus: &mut PayloadSPIController, 
-//     serial: &mut SerialWriter<USCI>){
+pub fn emission_sensing<USCI:SerialUsci>(
+    payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+    spi_bus: &mut PayloadSPIController, 
+    serial: &mut SerialWriter<USCI>){
 
-//     for sensor_result in test_heater(payload, spi_bus, serial).iter(){
-//         uwriteln!(serial, "{}", sensor_result).ok();
-//     }
+    for sensor_result in test_heater(payload, spi_bus, serial).iter(){
+        uwriteln!(serial, "{}", sensor_result).ok();
+    }
 
-//     let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
-//     for sensor_fn in fn_arr.iter() {
-//         for result in sensor_fn(payload, spi_bus, serial).iter() {
-//             uwriteln!(serial, "{}", sensor_result).ok();
-//         }
-//     }
-//     uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
-//     print_temperatures(payload, spi_bus, serial);
-// }
+    let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
+    for sensor_fn in fn_arr.iter() {
+        let result = sensor_fn(payload, spi_bus, serial);
+        uwriteln!(serial, "{}", result).ok();
+    }
+    uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
+    print_temperatures(payload, spi_bus, serial);
+}
 
 pub fn deployment_sensing<USCI:SerialUsci>(
     payload: &mut PayloadController<{PayloadOff}, {HeaterOff}>, 
@@ -234,4 +236,111 @@ pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_
     crate::testing::AutomatedPerformanceTests::test_aperture_current_sensor(payload, &mut payload_spi_controller,&mut serial_writer);
     
     uwriteln!(serial_writer, "========== TEST COMPLETE ==========").ok();
+}
+
+
+pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_writer: &mut SerialWriter<E_USCI_A1>, mut pinpuller_pins: PinpullerActivationPins, 
+    mut payload_spi_controller: PayloadSPIController, mut led_pins: LEDPins, mut timer: Timer<TB0>, mut lms_control_pins: TetherLMSPins) -> ! {
+    uwriteln!(serial_writer, "==========TVAC TEST FIRMWARE==========").ok();
+    delay_cycles(2_000_000);
+
+    let mut payload = payload.into_enabled_payload().into_enabled_heater();
+    crate::testing::AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, serial_writer);
+    let payload = payload.into_disabled_heater().into_disabled_payload();
+
+    led_pins.green_led.set_high().ok();
+
+    timer.start(32768u16);
+    let mut sec_elapsed_phase:u32 = 0;
+    let mut sec_elapsed_total:u32 = 0;
+
+    //  To avoid 'use of moved value' as we mutate the type of payload between loop iterations(?), we make a second variable to store payload here between loops. 
+    let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
+
+    loop{
+        // ------------------------------------------------------------------------
+        // -------------------------- Payload Off ---------------------------------
+        // ------------------------------------------------------------------------
+        uwriteln!(serial_writer, "ENTERING PAYLOAD-OFF PHASE").ok();
+        led_pins.yellow_led.set_low().ok();
+        led_pins.red_led.set_low().ok();
+
+        for _ in 0..45*60{
+            // LEAVE PAYLOAD OFF FOR 45 MINUTES
+            block!(timer.wait()).void_unwrap();
+            sec_elapsed_phase += 1;
+            sec_elapsed_total += 1;
+            uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+            uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
+            if let Some(payload) = payload_off.as_mut() {
+                payload_off_sensing(payload, &mut payload_spi_controller, serial_writer);
+            }
+            
+        }
+
+        uwriteln!(serial_writer, "").ok();
+        sec_elapsed_phase = 0;
+
+        // ------------------------------------------------------------------------
+        // ----------------------  Pinpuller activation ---------------------------
+        // ------------------------------------------------------------------------
+        uwriteln!(serial_writer, "ENTERING PINPULLER ACTIVATION PHASE").ok();
+        // activate pinpuller and LMS
+        pinpuller_pins.burn_wire_1.set_high().ok();
+        lms_control_pins.lms_led_enable.set_high().ok();
+        lms_control_pins.lms_receiver_enable.set_high().ok();
+        led_pins.yellow_led.set_high().ok();
+
+        for _ in 0..60{           
+            // LEAVE PINPULLER ON FOR 60 SECONDS
+            block!(timer.wait()).void_unwrap();
+            sec_elapsed_phase += 1;
+            sec_elapsed_total += 1;
+            uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+            uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
+            if let Some(payload) = payload_off.as_mut() {
+                deployment_sensing(payload,&mut payload_spi_controller, serial_writer);
+            }
+            
+        }
+
+        // disable pinpuller and LMS
+        pinpuller_pins.burn_wire_1.set_low().ok();
+        lms_control_pins.lms_led_enable.set_low().ok();
+        lms_control_pins.lms_receiver_enable.set_low().ok();
+
+        uwriteln!(serial_writer, "").ok();
+        sec_elapsed_phase = 0;
+
+        // ------------------------------------------------------------------------
+        // ---------------------------  Emission  ---------------------------------
+        // ------------------------------------------------------------------------
+        uwriteln!(serial_writer, "ENTERING EMISSION PHASE").ok();
+        // Payload On activated for 44 minutes
+        let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
+        
+        payload.set_cathode_offset_switch(SwitchState::Connected);
+        payload.set_tether_bias_switch(SwitchState::Connected);
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
+        payload.set_heater_voltage(3160, &mut payload_spi_controller);
+        led_pins.red_led.set_high().ok();
+
+        for _ in 0..44*60{
+            // ENTER CODE TO READ SENSORS FOR 44 MINUTES
+            block!(timer.wait()).void_unwrap();
+            sec_elapsed_phase += 1;
+            sec_elapsed_total += 1;
+            uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
+            uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
+            emission_sensing(&mut payload, &mut payload_spi_controller, serial_writer)
+        }
+
+        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
+        payload_off = Some(payload.into_disabled_heater().into_disabled_payload());
+
+        uwriteln!(serial_writer, "").ok();
+        sec_elapsed_phase = 0;
+    }
 }
