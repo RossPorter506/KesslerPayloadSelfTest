@@ -512,8 +512,8 @@ impl AutomatedPerformanceTests{
 
         PayloadController::set_tether_bias_switch(payload, SwitchState::Disconnected);     
 
-    let voltage_result = calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);    
-    [voltage_result]
+        let voltage_result = calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);    
+        [voltage_result]
     }
 }
 

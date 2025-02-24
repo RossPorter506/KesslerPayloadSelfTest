@@ -124,17 +124,12 @@ pub mod sensor_equations {
         ((v_adc_millivolts as i32 * 10891) / 100)+3708
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
-        //((v_adc_millivolts as i32 * -86_463)/1000)+301_437
-        //Vadc = -Vcath/85.75+4.64643
-        //Vcath = ((10000*Vadc - 46464)*-857500) / 10000
-        //(-84826*(v_adc_millivolts as i32 + 407166)) / 1000
         ((v_adc_millivolts as i32)*-84714 / 1000) + 406089
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
         (((v_adc_millivolts * 9) / 50) - 3) as i16
     }
     pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32{ // Output in MICROamps
-        //((v_adc_millivolts as i32 - 1020)*1015)/19_608 // original output in 100's of MICROamps, i.e. XXX.X mA. 
         ((1011 - v_adc_millivolts as i32)*50_750) / 10_239
     }   
     pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32{ // output in MICROamps
