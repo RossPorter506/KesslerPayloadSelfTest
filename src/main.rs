@@ -75,7 +75,7 @@ fn main() -> !{
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload().into_enabled_heater();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -93,7 +93,7 @@ fn main() -> !{
 
         led_pins.yellow_led.toggle().ok();
 
-        let (serial_tx_pin, mut serial_rx_pin) = SerialConfig::new(  
+        let (serial_tx_pin, mut serial_reader) = SerialConfig::new(  
             periph.E_USCI_A1,
             BitOrder::LsbFirst,
             BitCount::EightBits,
@@ -107,14 +107,11 @@ fn main() -> !{
         led_pins.red_led.toggle().ok();
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
-        
-        AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
-        AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
-        ManualFunctionalTests::full_system_test(&deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
 
-        let mut payload = payload.into_disabled_heater().into_disabled_payload();
-        
-        #[allow(clippy::empty_loop)] loop{}
+        let payload = testing::self_test(payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, 
+            &mut deploy_sense_pins, &mut serial_writer, &mut serial_reader);
+
+        idle_loop(&mut led_pins);
     }
     
     else {#[allow(clippy::empty_loop)] loop{}}

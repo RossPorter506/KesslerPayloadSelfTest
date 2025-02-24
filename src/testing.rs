@@ -1,4 +1,5 @@
 use embedded_hal::digital::v2::{OutputPin, InputPin};
+use msp430fr2355::E_USCI_A1;
 use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use ufmt::{uWrite, uwrite, uwriteln};
@@ -20,6 +21,24 @@ use fixed::{self, FixedI64};
 /// 
 /// Delta: 2.3283064e-10 = 0.00000000023283064
 type Fxd = FixedI64::<32>;
+
+/// Runs board diagnostics to check whether board functionality is working correctly
+pub fn self_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, pinpuller_pins: &mut PinpullerActivationPins, lms_control_pins: &mut TetherLMSPins, 
+    payload_spi_controller: &mut PayloadSPIController, deploy_sense_pins: &mut DeploySensePins, serial_writer: &mut SerialWriter<E_USCI_A1>, serial_reader: &mut Rx<E_USCI_A1>) 
+        -> PayloadController<{PayloadOff}, {HeaterOff}> {
+    
+    let mut payload = payload.into_enabled_payload().into_enabled_heater();
+
+    AutomatedFunctionalTests::full_system_test(&mut payload, pinpuller_pins, lms_control_pins, payload_spi_controller, serial_writer);
+    AutomatedPerformanceTests::full_system_test(&mut payload, pinpuller_pins, payload_spi_controller, serial_writer);
+    ManualFunctionalTests::full_system_test(deploy_sense_pins, serial_writer, serial_reader);
+
+    let payload = payload.into_disabled_heater().into_disabled_payload();
+
+    uwriteln!(serial_writer, "Payload self test complete!").ok();
+
+    payload
+}
 
 /// Tests that (potentially after some setup - devices, jumpers, shorts, etc.) can be done without user intervention.
 /// These tests often rely on a sensor and an actuator together, so they test multiple components at once.
@@ -622,9 +641,9 @@ impl AutomatedPerformanceTests{
         [voltage_result]
     }
 
-    pub fn test_aperture_current_sensor<'a, USCI:SerialUsci>(
+    pub fn test_aperture_current_sensor<USCI:SerialUsci>(
             payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>,  
-            spi_bus: &'a mut PayloadSPIController,
+            spi_bus: & mut PayloadSPIController,
             serial_writer: &mut SerialWriter<USCI>) {
         
         uwriteln!(serial_writer, "Here1").ok();
@@ -687,14 +706,13 @@ impl ManualFunctionalTests{
             serial_writer: &'a mut SerialWriter<USCI>, 
             serial_reader: &'a mut Rx<USCI>) -> [SensorResult<'b>; 2] {
 
-        uwriteln!(serial_writer, "Depress switches").ok();
+        uwriteln!(serial_writer, "Depress switches then press enter").ok();
         wait_for_any_packet(serial_reader);
 
         // Note: is_low/is_high is infallible, so ignore the unwraps
         let is_depressed_arr: [bool; 2] = [pins.endmass_sense_1.is_low().unwrap_or(false), pins.endmass_sense_2.is_low().unwrap_or(false)];
 
-        uwriteln!(serial_writer, "Release switches").ok();
-        
+        uwriteln!(serial_writer, "Release switches then press enter").ok();
         wait_for_any_packet(serial_reader);
 
         let is_released_arr: [bool; 2] = [pins.endmass_sense_1.is_high().unwrap_or(false), pins.endmass_sense_2.is_high().unwrap_or(false)];
