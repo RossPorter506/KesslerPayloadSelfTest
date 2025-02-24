@@ -8,11 +8,17 @@
 #![feature(adt_const_params)]
 #![feature(const_trait_impl)]
 
-use embedded_hal::digital::v2::*;
+use core::{ops::DerefMut, cell::UnsafeCell};
+
+use critical_section::{with, CriticalSection};
+use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
 use msp430_rt::entry;
 use msp430fr2355::{P1, P2, P3, P4, P5, P6, PMM};
-#[allow(unused_imports)]
-use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram};
+use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, 
+    serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, 
+    clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
+    timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
+use nb::block;
 #[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
@@ -31,15 +37,19 @@ mod spi; use spi::{PayloadSPIController, PayloadSPI, SckPhase::SampleFirstEdge, 
 mod dac; use dac::DAC;
 mod adc; use adc::{ApertureADC, MiscADC, TemperatureADC, TetherADC};
 mod digipot; use digipot::Digipot;
-mod payload; use payload::PayloadBuilder;
+mod payload; use payload::{PayloadBuilder, SwitchState, PayloadState, PayloadState::*, HeaterState, HeaterState::*};
 mod serial; use serial::SerialWriter;
+mod tvac;
 
 #[allow(unused_imports)]
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
+use void::ResultVoidExt;
+
+use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::PayloadController};
 
 #[allow(unused_mut)]
 #[entry]
-fn main() -> ! {
+fn main() -> !{
     if let Some(periph) = msp430fr2355::Peripherals::take() {
         let _wdt = Wdt::constrain(periph.WDT_A);
         
@@ -65,7 +75,7 @@ fn main() -> ! {
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload();
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins).into_enabled_payload().into_enabled_heater();
         
         let mut fram = Fram::new(periph.FRCTL);
 
@@ -73,7 +83,13 @@ fn main() -> ! {
             .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
             .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
             .freeze(&mut fram);
-        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.
+        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
+        
+        let parts = TimerParts3::new(
+            periph.TB0,
+            TimerConfig::aclk(&aclk),
+        );
+        let mut timer = parts.timer;
 
         led_pins.yellow_led.toggle().ok();
 
@@ -84,25 +100,23 @@ fn main() -> ! {
             StopBits::OneStopBit,
             Parity::NoParity,
             Loopback::NoLoop,
-            9600)
-            .use_aclk(&aclk)
+            115200)
+            .use_smclk(&smclk)
             .split(debug_serial_pins.tx, debug_serial_pins.rx);
 
         led_pins.red_led.toggle().ok();
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
-
-        payload.set_heater_voltage(HEATER_MIN_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-        let mut payload = payload.into_enabled_heater();
         
         AutomatedFunctionalTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, &mut serial_writer);
         AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, &mut serial_writer);
         ManualFunctionalTests::full_system_test(&deploy_sense_pins, &mut serial_writer, &mut serial_rx_pin);
-        //ManualPerformanceTests::test_heater_voltage(&mut payload, &mut payload_spi_controller, &mut serial_writer, &mut serial_rx_pin);
 
         let mut payload = payload.into_disabled_heater().into_disabled_payload();
-        idle_loop(&mut led_pins);
+        
+        #[allow(clippy::empty_loop)] loop{}
     }
+    
     else {#[allow(clippy::empty_loop)] loop{}}
 }
 

@@ -225,7 +225,7 @@ impl AutomatedFunctionalTests{
 
 /// Rather than using percent error (which isn't defined when the actual value is zero), we use Relative Percent Difference (RPD).
 /// Outputs are between -1 and 1. Values near zero are close to percentage error, but 1 means measured is infinitely larger than actual, -1 means measured is infinitely smaller than actual.
-fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
+pub fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
     if actual == 0 && measured == 0{
         return Fxd::ZERO;
     }
@@ -239,13 +239,13 @@ fn calculate_rpd(measured: i32, actual: i32) -> Fxd {
     // but the panic_never condition fails even if we check denominator is non-zero first...
 }
 /// Iteratively updates an average with a new value
-fn in_place_average(acc: Fxd, new: Fxd, n: u16) -> Fxd{
+pub fn in_place_average(acc: Fxd, new: Fxd, n: u16) -> Fxd{
     //acc + ((new - acc) / Fxd::from(n+1))
     acc + ((new - acc).checked_div(Fxd::from(n+1))
         .unwrap_or(Fxd::ZERO)) // unwrap_or should never fire, since n+1 > 0 when n is unsigned.
 } 
 
-fn calculate_performance_result(name: &str, rpd: Fxd, succ_percent: u8, inacc_percent: u8) -> PerformanceResult<'_> {
+pub fn calculate_performance_result(name: &str, rpd: Fxd, succ_percent: u8, inacc_percent: u8) -> PerformanceResult<'_> {
     let performance = match rpd.abs() {
         x if x < Fxd::from(succ_percent) / 100  => Performance::Nominal,
         x if x < Fxd::from(inacc_percent) / 100 => Performance::Inaccurate,
@@ -288,6 +288,25 @@ impl AutomatedPerformanceTests{
 
         uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
     }
+    pub fn full_system_emitter_test<USCI:SerialUsci>(
+        payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+        pinpuller_pins: &mut PinpullerActivationPins,
+        spi_bus: &mut PayloadSPIController, 
+        serial: &mut SerialWriter<USCI>){
+        uwriteln!(serial, "==== Automatic Emitter Performance Tests Start ====").ok();
+        // Each of these three fn's takes the same arguments and both return a voltage and current result
+        let fn_arr = [Self::test_cathode_offset_voltage, Self::test_tether_bias_voltage];
+        for sensor_fn in fn_arr.iter(){
+            uwriteln!(serial, "{}", sensor_fn(payload, spi_bus, serial)).ok();
+        }
+
+        for sensor_result in Self::test_heater(payload, spi_bus, serial).iter(){
+            uwriteln!(serial, "{}", sensor_result).ok();
+        }
+        uwriteln!(serial, "{}", Self::test_pinpuller_current_sensor(payload, pinpuller_pins, spi_bus, serial)).ok();
+
+        uwriteln!(serial, "==== Automatic Performance Tests Complete ====\n").ok();
+    }
     /// Setup: Place a 100k resistor between exterior and cathode-
     /// 
     /// Dependencies: Isolated 5V supply, tether ADC, DAC, cathode offset supply, signal processing circuitry, isolators
@@ -313,6 +332,25 @@ impl AutomatedPerformanceTests{
         [voltage_result, current_result]
     }
 
+    pub fn test_cathode_offset_voltage<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+        spi_bus: &'a mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a>{
+    
+        let voltage_accuracy = Self::test_hvdc_supply_voltage(
+            &PayloadController::set_cathode_offset_switch, 
+            &PayloadController::get_cathode_offset_voltage_millivolts,
+            &PayloadController::set_cathode_offset_voltage, 
+            CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, 
+            200_000, 
+            payload,
+            spi_bus, 
+            debug_writer);
+
+        let voltage_result = calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
+        voltage_result
+    }
+
     /// Setup: Place a 100k resistor between tether and cathode-
     /// 
     /// Dependencies: isolated 5V supply, tether ADC, DAC, tether bias supply, signal processing circuitry, isolators
@@ -336,6 +374,25 @@ impl AutomatedPerformanceTests{
         let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
         let current_result = calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
         [voltage_result, current_result]
+    }
+
+    pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
+        payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+        spi_bus: &'a mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
+    
+        let voltage_accuracy = Self::test_hvdc_supply_voltage(
+            &PayloadController::set_tether_bias_switch, 
+            &PayloadController::get_tether_bias_voltage_millivolts, 
+            &PayloadController::set_tether_bias_voltage, 
+            TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, 
+            200_000, 
+            payload,
+            spi_bus, 
+            debug_writer);
+
+        let voltage_result = calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
+        voltage_result
     }
     
     /// Internal function to reduce code duplication.
@@ -398,6 +455,55 @@ impl AutomatedPerformanceTests{
         [voltage_accuracy, current_accuracy]
     }
     
+    /// Internal function to reduce code duplication.
+    fn test_hvdc_supply_voltage<const DONTCARE: HeaterState, USCI:SerialUsci>(
+        set_switch_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, SwitchState), 
+        measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
+        set_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, u32, &mut PayloadSPIController),
+        supply_min: u32,
+        supply_max: u32,
+        payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
+        spi_bus: &mut PayloadSPIController,
+        debug_writer: &mut SerialWriter<USCI>) -> Fxd {
+        
+        const NUM_MEASUREMENTS: usize = 10;
+        const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
+        const TEST_START_PERCENT: u32 = 10;
+        const TEST_END_PERCENT: u32 = 100;
+        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+
+        set_switch_fn(payload, SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
+            let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
+            dbg_uwriteln!(debug_writer, "Target output voltage: {}mV", set_voltage_mv);
+
+            // Set cathode voltage
+            set_voltage_fn(payload, set_voltage_mv, spi_bus);
+            dbg_uwriteln!(debug_writer, "Set target voltage");
+
+            delay_cycles(100_000); //settling time
+            
+            // Read voltage, current
+            let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
+            dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
+
+            // Calculate expected voltage and current
+            let expected_voltage_mv: i32 = set_voltage_mv as i32;
+            dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
+
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, expected_voltage_mv);
+
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+            dbg_uwriteln!(debug_writer, "");
+        }
+
+        // Set back to zero
+        set_voltage_fn(payload, (supply_min+supply_max)/100, spi_bus);
+
+        set_switch_fn(payload, SwitchState::Disconnected);
+
+        voltage_accuracy
+    }
     /// Setup: 10 ohm resistor across heater+ and heater-
     /// 
     /// Dependencies: Tether ADC, digipot, isolated 5V supply, isolated 12V supply, heater step-down regulator, signal processing circuitry, isolators
@@ -411,7 +517,7 @@ impl AutomatedPerformanceTests{
         let mut current_accuracy: Fxd = Fxd::ZERO;
 
         for (i, output_percentage) in (0..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
-            let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(HEATER_MAX_VOLTAGE_MILLIVOLTS as u32)) / 100) as u16;
+            let output_voltage_mv: u16 = (((100-output_percentage)*(HEATER_MIN_VOLTAGE_MILLIVOLTS as u32) + output_percentage*(2_000 as u32)) / 100) as u16;
 
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv, spi_bus);
@@ -515,7 +621,49 @@ impl AutomatedPerformanceTests{
         let voltage_result = calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);    
         [voltage_result]
     }
-}
+
+    pub fn test_aperture_current_sensor<'a, USCI:SerialUsci>(
+            payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>,  
+            spi_bus: &'a mut PayloadSPIController,
+            serial_writer: &mut SerialWriter<USCI>) {
+        
+        uwriteln!(serial_writer, "Here1").ok();
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, spi_bus);
+        uwriteln!(serial_writer, "Here2").ok();
+        payload.set_cathode_offset_switch(SwitchState::Connected);
+        uwriteln!(serial_writer, "Here3").ok();
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        uwriteln!(serial_writer, "Here4").ok();
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
+        uwriteln!(serial_writer, "Here5").ok();
+        
+        
+        for cycles in 1..4{
+            for heater_voltage_mv in (900..3100).step_by(100){
+                uwriteln!(serial_writer, "Heater voltage set to: {}mV", heater_voltage_mv).ok();
+                payload.set_heater_voltage(heater_voltage_mv, spi_bus);
+                delay_cycles(1_000_000);
+    
+                let measured_heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+                let measured_cathode_offset_voltage_mv = payload.get_cathode_offset_voltage_millivolts(spi_bus);
+                let measured_cathode_offset_current_ua = payload.get_cathode_offset_current_microamps(spi_bus);
+                let measured_aperture_adc_mv = payload.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
+                let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);     
+                          
+                uwriteln!(serial_writer, "Measured heater voltage: {}mV", measured_heater_voltage_mv).ok();
+                uwriteln!(serial_writer, "Measured cathode offset voltage: {}mV", measured_cathode_offset_voltage_mv).ok();
+                uwriteln!(serial_writer, "Measured cathode offset current: {}uA", measured_cathode_offset_current_ua).ok();                
+                uwriteln!(serial_writer, "Measured aperture ADC voltage: {}mV", measured_aperture_adc_mv).ok();
+                uwriteln!(serial_writer, "Measured aperture current: {}uA", measured_aperture_current_ua).ok();
+                uwriteln!(serial_writer, "").ok();
+                delay_cycles(3_000_000);
+            }
+        }
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS, spi_bus);
+        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+    }   
+}   
+
 
 /// Tests that require human intervention. These are pass/fail tests.
 pub struct ManualFunctionalTests{}
@@ -592,15 +740,19 @@ impl ManualFunctionalTests{
 }
 
 /// Values associated with mock pinpuller tests
-mod pinpuller_mock {
+pub mod pinpuller_mock {
     use super::{Fxd, PINPULLER_VOLTAGE_MILLIVOLTS};
 
     const MOSFET_R_ON_RESISTANCE: Fxd = Fxd::lit("0.03"); // Verify(?)
     const PINPULLER_MOCK_RESISTANCE: Fxd = Fxd::lit("1.2");
-    const SENSE_RESISTANCE: Fxd = Fxd::lit("0.4");
+    const DIVIDER_RESISTANCE: Fxd = Fxd::lit("0.4");
+    const SENSE_RESISTANCE: Fxd = Fxd::lit("0.082");
+    const WIRE_RESISTANCE: Fxd = Fxd::lit("0.22");
     const CIRCUIT_RESISTANCE: Fxd = 
-        PINPULLER_MOCK_RESISTANCE
+    WIRE_RESISTANCE
         .unwrapped_add(SENSE_RESISTANCE)
+        .unwrapped_add(DIVIDER_RESISTANCE)
+        .unwrapped_add(PINPULLER_MOCK_RESISTANCE)
         .unwrapped_add(MOSFET_R_ON_RESISTANCE)
         .unwrapped_add(MOSFET_R_ON_RESISTANCE);
     const NUM_PINS: usize = 4;
@@ -610,10 +762,10 @@ mod pinpuller_mock {
 }
 
 /// Values associated with mock heater tests
-mod heater_mock {
+pub mod heater_mock {
     use super::{Fxd, fixed_sqrt};
 
-    const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 10_000;
+    const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 2_000;
     const PROBE_RESISTANCE_MOHMS: u16 = 90;
     pub const CIRCUIT_RESISTANCE_MOHMS: u16 = MOCK_HEATER_RESISTANCE_MOHMS + super::HEATER_SENSE_RESISTANCE_MILLIOHMS as u16; // heater resistance + shunt resistor
     pub const CIRCUIT_AND_PROBE_RESISTANCE_MOHMS: u16 = CIRCUIT_RESISTANCE_MOHMS + PROBE_RESISTANCE_MOHMS;
@@ -623,8 +775,8 @@ mod heater_mock {
         .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
 }
 
-mod hvdc_mock {
-    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 97_671;
+pub mod hvdc_mock {
+    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
     pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
 
 }
@@ -1043,7 +1195,7 @@ impl ManualPerformanceTests{
             let probe_resistance: i32 = 10; // Measure resistance with multimeter
             let wirewound_res: i32 = 1200;  // Measure resistance with multimeter
             let mosfets: i32 = 27*2;
-            let wire_resistance: i32 = 130 + 320;
+            let wire_resistance: i32 = 100 + 130;
             let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms
             
             // Select burn wire 1 to form current loop.        

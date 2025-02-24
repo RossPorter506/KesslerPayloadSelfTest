@@ -124,7 +124,7 @@ pub mod sensor_equations {
         ((v_adc_millivolts as i32 * 10891) / 100)+3708
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32{
-        ((v_adc_millivolts as i32)*-84714 / 1000) + 406089
+        ((v_adc_millivolts as i32)*-8471 / 100) + 406089
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16{
         (((v_adc_millivolts * 9) / 50) - 3) as i16
@@ -136,8 +136,8 @@ pub mod sensor_equations {
         ((2576 - v_adc_millivolts as i32)*883)/500
     }
 
-    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
-        (((-(v_adc_millivolts as i32) + (40_000/9)) * 43) / 10) as u16
+    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> i32 {
+        ((((-(v_adc_millivolts as i32))*847)/200)+10807) as i32
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
