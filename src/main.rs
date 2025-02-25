@@ -108,8 +108,7 @@ fn main() -> !{
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
 
-        let payload = testing::self_test(payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, 
-            &mut deploy_sense_pins, &mut serial_writer, &mut serial_reader);
+        tvac::tvac_test(payload, &mut serial_writer, pinpuller_pins, payload_spi_controller, led_pins, timer, lms_control_pins);
 
         idle_loop(&mut led_pins);
     }
