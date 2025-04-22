@@ -121,6 +121,8 @@ impl AutomatedFunctionalTests{
     pub fn aperture_adc_functional_test<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState>(
         payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
         spi_bus: &'a mut impl PayloadSPI<{IdleHigh}, {SampleFirstEdge}>) -> SensorResult<'a> {
+    payload.aperture_adc.cs_pin.set_low().ok(); // See 'payload.get_aperture_current_microamps'
+    delay_cycles(5000);
     let result =Self::test_adc_functional(&mut payload.aperture_adc, spi_bus, ADCChannel::IN7);
     SensorResult { name: "Aperture ADC", result }
 }

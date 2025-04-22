@@ -109,6 +109,11 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
     }
     // Aperture
     pub fn get_aperture_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
+        // The aperture CS pin also controls whether the aperture ADC and circuitry are powered.
+        // They should be powered for at least 5ms before a value is requested.
+        self.aperture_adc.cs_pin.set_low().ok();
+        crate::delay_cycles(5_000); // 5ms
+        
         let adc_voltage = self.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
         aperture_current_sensor_eq(adc_voltage)
     }
