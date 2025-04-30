@@ -244,7 +244,7 @@ pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_w
     uwriteln!(serial_writer, "==========TVAC TEST FIRMWARE==========").ok();
     delay_cycles(2_000_000);
 
-    let mut payload = payload.into_enabled_payload().into_enabled_heater();
+    let mut payload = payload.into_enabled_payload(&mut payload_spi_controller).into_enabled_heater();
     crate::testing::AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, serial_writer);
     let payload = payload.into_disabled_heater().into_disabled_payload();
 
@@ -317,7 +317,7 @@ pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_w
         // ------------------------------------------------------------------------
         uwriteln!(serial_writer, "ENTERING EMISSION PHASE").ok();
         // Payload On activated for 44 minutes
-        let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
+        let mut payload = payload_off.unwrap().into_enabled_payload(&mut payload_spi_controller).into_enabled_heater();
         
         payload.set_cathode_offset_switch(SwitchState::Connected);
         payload.set_tether_bias_switch(SwitchState::Connected);

@@ -29,7 +29,7 @@ pub enum DACChannel{
 //                24...                                                            ...0
 // Where C is command bits, A is address, D is data, and X is 'dont care'
 
-const NUM_DATA_BITS: u8 = 10; // This varies depending on the exact model of LTC2634
+const NUM_DATA_BITS: u8 = 12; // This varies depending on the exact model of LTC2634
 
 const NUM_BITS_IN_PACKET: u8 = 24;
 const NUM_COMMAND_BITS: u8 = 4;
@@ -45,10 +45,8 @@ pub struct DAC {
     pub cs_pin: DACCSPin,
 }
 impl DAC{
-    pub fn new(cs_pin: DACCSPin, spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>) -> DAC {
-        let mut dac = DAC{cs_pin};
-        dac.send_command(SelectExternalReference, ChannelA, 0x000, spi_bus);
-        dac
+    pub fn new(cs_pin: DACCSPin) -> DAC {
+        DAC{cs_pin}
     }
     pub fn send_command(&mut self, command: DACCommand, channel: DACChannel, value: u16, 
                         spi_bus: &mut impl PayloadSPI<{IdleLow}, {SampleFirstEdge}>) {
