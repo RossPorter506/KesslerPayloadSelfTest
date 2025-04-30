@@ -27,7 +27,7 @@ pub fn self_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, pinpulle
     payload_spi_controller: &mut PayloadSPIController, deploy_sense_pins: &mut DeploySensePins, serial_writer: &mut SerialWriter<E_USCI_A1>, serial_reader: &mut Rx<E_USCI_A1>) 
         -> PayloadController<{PayloadOff}, {HeaterOff}> {
     
-    let mut payload = payload.into_enabled_payload().into_enabled_heater();
+    let mut payload = payload.into_enabled_payload(payload_spi_controller).into_enabled_heater();
 
     AutomatedFunctionalTests::full_system_test(&mut payload, pinpuller_pins, lms_control_pins, payload_spi_controller, serial_writer);
     AutomatedPerformanceTests::full_system_test(&mut payload, pinpuller_pins, payload_spi_controller, serial_writer);

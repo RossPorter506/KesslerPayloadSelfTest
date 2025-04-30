@@ -63,8 +63,9 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
 }
 // Transition functions
 impl PayloadController<{PayloadOff}, {HeaterOff}>{
-    pub fn into_enabled_payload(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
+    pub fn into_enabled_payload(mut self, spi_bus: &mut PayloadSPIController) -> PayloadController<{PayloadOn}, {HeaterOff}> {
         self.pins.payload_enable.set_high().ok();
+        self.dac.send_command(crate::dac::DACCommand::SelectExternalReference, crate::dac::DACChannel::ChannelA, 0x000, spi_bus.borrow());
         PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
                             pins: self.pins}
     }

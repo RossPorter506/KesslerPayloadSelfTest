@@ -64,8 +64,6 @@ fn main() -> !{
         
         lms_control_pins.lms_led_enable.set_low().ok();
         led_pins.green_led.toggle().ok();
-        payload_peripheral_cs_pins.dac.set_high().ok();
-        payload_control_pins.payload_enable.set_high().ok(); // Enable payload so DAC can hear it's reference selection that happens during collection
         delay_cycles(100_000);
         
         // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
@@ -73,7 +71,7 @@ fn main() -> !{
         let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
 
         // Collate peripherals into a single struct
-        let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins, &mut payload_spi_controller);
+        let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins);
         // Create an object to manage payload state
         let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
         
@@ -107,9 +105,9 @@ fn main() -> !{
         led_pins.red_led.toggle().ok();
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
-
+        
         let payload = testing::self_test(payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, 
-            &mut deploy_sense_pins, &mut serial_writer, &mut serial_reader);
+           &mut deploy_sense_pins, &mut serial_writer, &mut serial_reader);
 
         idle_loop(&mut led_pins);
     }
@@ -143,10 +141,10 @@ fn snake_leds(n: &mut u8, led_pins: &mut LEDPins){
     };
 }
 
-fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins, payload_spi_bus: &mut PayloadSPIController) -> PayloadPeripherals{
+fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins) -> PayloadPeripherals{
     // Note that the peripherals gain ownership of their associated pins
     let digipot = Digipot::new(cs_pins.digipot);
-    let dac = DAC::new(cs_pins.dac, payload_spi_bus.borrow());
+    let dac = DAC::new(cs_pins.dac);
     let tether_adc = TetherADC::new(cs_pins.tether_adc);
     let temperature_adc = TemperatureADC::new(cs_pins.temperature_adc);
     let misc_adc = MiscADC::new(cs_pins.misc_adc);
