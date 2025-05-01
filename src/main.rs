@@ -8,18 +8,17 @@
 #![feature(adt_const_params)]
 #![feature(const_trait_impl)]
 
-use core::{ops::DerefMut, cell::UnsafeCell};
+use core::{cell::{RefCell, UnsafeCell}, ops::DerefMut};
 
-use critical_section::{with, CriticalSection};
+use critical_section::{with, CriticalSection, Mutex};
 use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
 use msp430_rt::entry;
-use msp430fr2355::{P1, P2, P3, P4, P5, P6, PMM};
+use msp430fr2355::{E_USCI_A1, P1, P2, P3, P4, P5, P6, PMM};
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, 
     serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, 
     clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
     timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
 use nb::block;
-#[allow(unused_imports)]
 use ufmt::{uwrite, uwriteln};
 
 #[cfg(debug_assertions)]
@@ -45,7 +44,7 @@ mod tvac;
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
 use void::ResultVoidExt;
 
-use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::PayloadController};
+use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::Payload};
 
 #[allow(unused_mut)]
 #[entry]
@@ -73,15 +72,14 @@ fn main() -> !{
         // Collate peripherals into a single struct
         let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins);
         // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
+        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins, payload_spi_controller);
         
         let mut fram = Fram::new(periph.FRCTL);
 
-        let (smclk, aclk) = ClockConfig::new(periph.CS)
+        let (smclk, aclk, delay) = ClockConfig::new(periph.CS)
             .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
             .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
             .freeze(&mut fram);
-        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
         
         let parts = TimerParts3::new(
             periph.TB0,
@@ -105,14 +103,34 @@ fn main() -> !{
         led_pins.red_led.toggle().ok();
         // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
         let mut serial_writer = SerialWriter::new(serial_tx_pin);
+
+        // critical_section::with(|cs| {
+        //     SERIAL_WR.replace(cs, Some(serial_writer))
+        // });
         
-        let payload = testing::self_test(payload, &mut pinpuller_pins, &mut lms_control_pins, &mut payload_spi_controller, 
+        
+        let payload = testing::self_test(payload, &mut pinpuller_pins, &mut lms_control_pins, 
            &mut deploy_sense_pins, &mut serial_writer, &mut serial_reader);
+
+           println!("Hello world!");
 
         idle_loop(&mut led_pins);
     }
     
     else {#[allow(clippy::empty_loop)] loop{}}
+}
+
+static SERIAL_WR: Mutex<RefCell<Option< SerialWriter<E_USCI_A1>> >> = Mutex::new(RefCell::new(None));
+
+#[macro_export]
+macro_rules! println {
+    ($( $rest:tt )*) => {    
+        critical_section::with(|cs| {
+            if let Some(ref mut serial) = *SERIAL_WR.borrow_ref_mut(cs) {
+                uwrite!(serial,  $($rest)*).ok();
+            }
+        });
+    }
 }
 
 fn idle_loop(led_pins: &mut LEDPins) -> ! {
