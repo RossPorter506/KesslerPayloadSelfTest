@@ -29,68 +29,69 @@ pub enum HeaterState {
     HeaterOff,
 } use HeaterState::*;
 
-pub struct PayloadBuilder {
-}
+pub struct PayloadBuilder {}
 impl PayloadBuilder{
-    pub fn build(periph: PayloadPeripherals, mut pins: PayloadControlPins) -> PayloadController<{PayloadOff}, {HeaterOff}> {
+    pub fn build(periph: PayloadPeripherals, mut pins: PayloadControlPins, spi: PayloadSPIController) -> Payload<{PayloadOff}, {HeaterOff}> {
         pins.heater_enable.set_low().ok();
         pins.payload_enable.set_low().ok();
         
-        PayloadController::<{PayloadOff}, {HeaterOff}>{
+        Payload::<{PayloadOff}, {HeaterOff}>{
             tether_adc: periph.tether_adc, 
             temperature_adc: periph.temperature_adc, 
             misc_adc: periph.misc_adc, 
             aperture_adc: periph.aperture_adc,
             dac: periph.dac, 
             digipot: periph.digipot, 
-            pins}
+            pins, spi}
     }
 }
 
-pub struct PayloadController<const PSTATE: PayloadState, const HSTATE: HeaterState> {
+pub struct Payload<const PSTATE: PayloadState, const HSTATE: HeaterState> {
     pub tether_adc: TetherADC,
     pub temperature_adc: TemperatureADC,
     pub misc_adc: MiscADC,
     pub aperture_adc: ApertureADC,
     pub dac: DAC,
     pub digipot: Digipot,
+    pub spi: PayloadSPIController,
     pins: PayloadControlPins,
 }
-impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PSTATE, HSTATE>{
+impl<const PSTATE: PayloadState, const HSTATE: HeaterState> Payload<PSTATE, HSTATE>{
     pub fn return_peripherals(self) -> (PayloadPeripherals, PayloadControlPins){
         (PayloadPeripherals {tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot}, self.pins)
     }
 }
+
 // Transition functions
-impl PayloadController<{PayloadOff}, {HeaterOff}>{
-    pub fn into_enabled_payload(mut self, spi_bus: &mut PayloadSPIController) -> PayloadController<{PayloadOn}, {HeaterOff}> {
+impl Payload<{PayloadOff}, {HeaterOff}>{
+    pub fn into_enabled_payload(mut self) -> Payload<{PayloadOn}, {HeaterOff}> {
         self.pins.payload_enable.set_high().ok();
-        self.dac.send_command(crate::dac::DACCommand::SelectExternalReference, crate::dac::DACChannel::ChannelA, 0x000, spi_bus.borrow());
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins}
+        self.dac.send_command(crate::dac::DACCommand::SelectExternalReference, crate::dac::DACChannel::ChannelA, 0x000, self.spi.borrow());
+        Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, spi: self.spi}
     }
 }
-impl PayloadController<{PayloadOn}, {HeaterOff}>{
-    pub fn into_enabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOn}> {
+impl Payload<{PayloadOn}, {HeaterOff}>{
+    pub fn into_enabled_heater(mut self) -> Payload<{PayloadOn}, {HeaterOn}> {
         self.pins.heater_enable.set_high().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins}
+        Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, spi: self.spi}
     }
-    pub fn into_disabled_payload(mut self) -> PayloadController<{PayloadOff}, {HeaterOff}> {
+    pub fn into_disabled_payload(mut self) -> Payload<{PayloadOff}, {HeaterOff}> {
         self.pins.payload_enable.set_low().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins}
+        Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, spi: self.spi}
     }
 }
-impl PayloadController<{PayloadOn}, {HeaterOn}>{
-    pub fn into_disabled_heater(mut self) -> PayloadController<{PayloadOn}, {HeaterOff}> {
+impl Payload<{PayloadOn}, {HeaterOn}>{
+    pub fn into_disabled_heater(mut self) -> Payload<{PayloadOn}, {HeaterOff}> {
         self.pins.heater_enable.set_low().ok();
-        PayloadController { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins}
+        Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
+                            pins: self.pins, spi: self.spi}
     }
 }
 // Actual sensor functions. These are always available.
-impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PSTATE, HSTATE>{
+impl<const PSTATE: PayloadState, const HSTATE: HeaterState> Payload<PSTATE, HSTATE>{
     // Temperature sensors
     // TODO: Remove these once new temperature funciton has been tested
     /*pub fn get_lms_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut impl PayloadSPI<IdleHigh,{SampleFirstEdge}>) -> u16{
@@ -101,104 +102,104 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> PayloadController<PS
         let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
         payload_temperature_eq(adc_voltage)
     }*/
-    pub fn get_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor, spi_bus: &mut PayloadSPIController) -> u16 {
-        let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, spi_bus);
+    pub fn get_temperature_kelvin(&mut self, temp_sensor: &TemperatureSensor) -> u16 {
+        let adc_voltage = self.temperature_adc.read_voltage_from(temp_sensor, &mut self.spi);
         match &temp_sensor.vcc {
             VccType::LMS     => lms_temperature_eq(adc_voltage),
             VccType::Payload => payload_temperature_eq(adc_voltage)
         }
     }
     // Aperture
-    pub fn get_aperture_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
+    pub fn get_aperture_current_microamps(&mut self) -> u16 {
         // The aperture CS pin also controls whether the aperture ADC and circuitry are powered.
         // They should be powered for at least 5ms before a value is requested.
         self.aperture_adc.cs_pin.set_low().ok();
         crate::delay_cycles(5_000); // 5ms
         
-        let adc_voltage = self.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, spi_bus);
+        let adc_voltage = self.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut self.spi);
         aperture_current_sensor_eq(adc_voltage)
     }
 
     // Pinpuller
-    pub fn get_pinpuller_current_milliamps(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
-        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, spi_bus);
+    pub fn get_pinpuller_current_milliamps(&mut self) -> u16 {
+        let adc_voltage = self.misc_adc.read_voltage_from(&PINPULLER_CURRENT_SENSOR, &mut self.spi);
         pinpuller_current_sensor_eq(adc_voltage)
     }
 
     // LMS
-    pub fn get_lms_receiver_1_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
-        self.misc_adc.read_voltage_from(&LMS_RECEIVER_1_SENSOR, spi_bus)
+    pub fn get_lms_receiver_1_millivolts(&mut self) -> u16 {
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_1_SENSOR, &mut self.spi)
     }
-    pub fn get_lms_receiver_2_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
-        self.misc_adc.read_voltage_from(&LMS_RECEIVER_2_SENSOR, spi_bus)
+    pub fn get_lms_receiver_2_millivolts(&mut self) -> u16 {
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_2_SENSOR, &mut self.spi)
     }
-    pub fn get_lms_receiver_3_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> u16 {
-        self.misc_adc.read_voltage_from(&LMS_RECEIVER_3_SENSOR, spi_bus)
+    pub fn get_lms_receiver_3_millivolts(&mut self) -> u16 {
+        self.misc_adc.read_voltage_from(&LMS_RECEIVER_3_SENSOR, &mut self.spi)
     }
 }
 // These functions are only available when the payload is on.
-impl<const HSTATE: HeaterState> PayloadController<{PayloadOn}, HSTATE>{
+impl<const HSTATE: HeaterState> Payload<{PayloadOn}, HSTATE>{
     /* Supplies */
     // Heater
     // Note that we *can* change the heater voltage without the heater being enabled.
-    pub fn set_heater_voltage(&mut self, mut target_millivolts: u16, spi_bus: &mut PayloadSPIController){
+    pub fn set_heater_voltage(&mut self, mut target_millivolts: u16){
         target_millivolts = enforce_bounds( 
             HEATER_MIN_VOLTAGE_MILLIVOLTS, 
             target_millivolts, 
             HEATER_MAX_VOLTAGE_MILLIVOLTS);
         let target_digipot_resistance = heater_target_voltage_to_digipot_resistance(target_millivolts);
-        self.digipot.set_channel_to_resistance(HEATER_DIGIPOT_CHANNEL,target_digipot_resistance, spi_bus);
+        self.digipot.set_channel_to_resistance(HEATER_DIGIPOT_CHANNEL,target_digipot_resistance, &mut self.spi);
     }
-    pub fn get_heater_voltage_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> u16{
-        let adc_millivolts = self.tether_adc.read_voltage_from(&HEATER_VOLTAGE_SENSOR, spi_bus);
+    pub fn get_heater_voltage_millivolts(&mut self) -> u16{
+        let adc_millivolts = self.tether_adc.read_voltage_from(&HEATER_VOLTAGE_SENSOR, &mut self.spi);
         heater_voltage_eq(adc_millivolts)
     }
-    pub fn get_heater_current_milliamps(&mut self, spi_bus: &mut PayloadSPIController) -> i16{
-        let adc_millivolts = self.tether_adc.read_voltage_from(&HEATER_CURRENT_SENSOR, spi_bus);
+    pub fn get_heater_current_milliamps(&mut self) -> i16{
+        let adc_millivolts = self.tether_adc.read_voltage_from(&HEATER_CURRENT_SENSOR, &mut self.spi);
         heater_current_eq(adc_millivolts)
     }
 
     // Tether Bias
-    pub fn set_tether_bias_voltage(&mut self, mut target_millivolts: u32, spi_bus: &mut PayloadSPIController){
+    pub fn set_tether_bias_voltage(&mut self, mut target_millivolts: u32){
         target_millivolts = enforce_bounds( 
             TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS,
             target_millivolts,
             TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS);
         let dac_voltage = tether_bias_target_voltage_to_dac_voltage(target_millivolts);
         let count = DAC::voltage_to_count(dac_voltage);
-        self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, TETHER_BIAS_SUPPLY_CONTROL_CHANNEL, count, spi_bus.borrow())
+        self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, TETHER_BIAS_SUPPLY_CONTROL_CHANNEL, count, self.spi.borrow())
     }
-    pub fn get_tether_bias_voltage_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
-        let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_VOLTAGE_SENSOR, spi_bus);
+    pub fn get_tether_bias_voltage_millivolts(&mut self) -> i32 {
+        let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_VOLTAGE_SENSOR, &mut self.spi);
         tether_bias_voltage_eq(adc_voltage)
     }
-    pub fn get_tether_bias_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
-        let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_CURRENT_SENSOR, spi_bus);
+    pub fn get_tether_bias_current_microamps(&mut self) -> i32 {
+        let adc_voltage = self.tether_adc.read_voltage_from(&TETHER_BIAS_CURRENT_SENSOR, &mut self.spi);
         tether_bias_current_eq(adc_voltage)
     }
 
     // Cathode Offset
-    pub fn set_cathode_offset_voltage(&mut self, mut target_millivolts: u32, spi_bus: &mut PayloadSPIController){
+    pub fn set_cathode_offset_voltage(&mut self, mut target_millivolts: u32){
         target_millivolts = enforce_bounds( 
             CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS,
             target_millivolts,
             CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS);
         let dac_voltage = cathode_offset_target_voltage_to_dac_voltage(target_millivolts);
         let count = DAC::voltage_to_count(dac_voltage);
-        self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL, count, spi_bus.borrow())
+        self.dac.send_command(DACCommand::WriteToAndUpdateRegisterX, CATHODE_OFFSET_SUPPLY_CONTROL_CHANNEL, count, self.spi.borrow())
     }
-    pub fn get_cathode_offset_voltage_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
-        let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_VOLTAGE_SENSOR, spi_bus);
+    pub fn get_cathode_offset_voltage_millivolts(&mut self) -> i32 {
+        let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_VOLTAGE_SENSOR, &mut self.spi);
         cathode_offset_voltage_eq(adc_voltage)
     }
-    pub fn get_cathode_offset_current_microamps(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
-        let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_CURRENT_SENSOR, spi_bus);
+    pub fn get_cathode_offset_current_microamps(&mut self) -> i32 {
+        let adc_voltage = self.tether_adc.read_voltage_from(&CATHODE_OFFSET_CURRENT_SENSOR, &mut self.spi);
         cathode_offset_current_eq(adc_voltage)
     }
 
     // Repeller
-    pub fn get_repeller_voltage_millivolts(&mut self, spi_bus: &mut PayloadSPIController) -> i32 {
-        let adc_voltage = self.tether_adc.read_voltage_from(&REPELLER_VOLTAGE_SENSOR, spi_bus);
+    pub fn get_repeller_voltage_millivolts(&mut self) -> i32 {
+        let adc_voltage = self.tether_adc.read_voltage_from(&REPELLER_VOLTAGE_SENSOR, &mut self.spi);
         repeller_voltage_eq(adc_voltage)
     }
 

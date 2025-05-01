@@ -8,7 +8,7 @@ use ufmt::{uWrite, uwrite, uwriteln};
 use void::ResultVoidExt;
 
 use crate::delay_cycles;
-use crate::payload::{PayloadController, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
+use crate::payload::{Payload, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
 use crate::serial::{SerialWriter, wait_for_any_packet};
 #[allow(unused_imports)]
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
@@ -27,7 +27,7 @@ pub fn emission_sensing<USCI:SerialUsci>(
     expected_heater_voltage_mv: u32,
     expected_tb_voltage_mv: u32,
     expected_co_voltage_mv: u32,
-    payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+    payload: &mut Payload<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>){
 
@@ -52,7 +52,7 @@ pub fn emission_sensing<USCI:SerialUsci>(
 }
 
 pub fn deployment_sensing<USCI:SerialUsci>(
-    payload: &mut PayloadController<{PayloadOff}, {HeaterOff}>, 
+    payload: &mut Payload<{PayloadOff}, {HeaterOff}>, 
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>) {
     
@@ -61,7 +61,7 @@ pub fn deployment_sensing<USCI:SerialUsci>(
 }
 
 pub fn payload_off_sensing<USCI:SerialUsci>(
-    payload: &mut PayloadController<{PayloadOff}, {HeaterOff}>, 
+    payload: &mut Payload<{PayloadOff}, {HeaterOff}>, 
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>) {
 
@@ -69,7 +69,7 @@ pub fn payload_off_sensing<USCI:SerialUsci>(
 }
 
 pub fn print_temperatures<const DONTCARE1:PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
-    payload: &mut PayloadController<{DONTCARE1}, {DONTCARE2}>,
+    payload: &mut Payload<{DONTCARE1}, {DONTCARE2}>,
     spi_bus: &mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI>){
 
@@ -85,17 +85,17 @@ pub fn print_temperatures<const DONTCARE1:PayloadState, const DONTCARE2:HeaterSt
     ];    
 
     for (n, (sensor, name)) in TEMP_SENSORS.iter().enumerate() {    
-        let tempr = payload.get_temperature_kelvin(sensor, spi_bus) as i16;
+        let tempr = payload.get_temperature_kelvin(sensor) as i16;
         uwriteln!(debug_writer, "{}: {}", name, tempr - (CELCIUS_TO_KELVIN_OFFSET as i16)).ok();     
     }
     uwriteln!(debug_writer, "").ok();
 }
 
 fn compare_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
-    measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
-    measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
+    measure_voltage_fn: &dyn Fn(&mut Payload<{PayloadOn}, DONTCARE>) -> i32,
+    measure_current_fn: &dyn Fn(&mut Payload<{PayloadOn}, DONTCARE>) -> i32,
     expected_voltage_mv: u32,
-    payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
+    payload: &mut Payload<{PayloadOn}, DONTCARE>,
     spi_bus: &mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> Fxd {
 
@@ -104,8 +104,8 @@ fn compare_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
         
     // Read voltage, current
-    let measured_voltage_mv = measure_voltage_fn(payload, spi_bus);
-    let measured_current_ua = measure_current_fn(payload, spi_bus);
+    let measured_voltage_mv = measure_voltage_fn(payload);
+    let measured_current_ua = measure_current_fn(payload);
     dbg_uwriteln!(debug_writer, "Measured output voltage: {}mV", measured_voltage_mv);
     dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
 
@@ -121,14 +121,14 @@ fn compare_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
 
 pub fn compare_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     expected_voltage_mv: u32,
-    payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+    payload: &'a mut Payload<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
     let voltage_accuracy = self::compare_hvdc_supply(
-            &PayloadController::get_cathode_offset_voltage_millivolts, 
-            &PayloadController::get_cathode_offset_current_microamps, 
             expected_voltage_mv,
+            &Payload::get_cathode_offset_voltage_millivolts, 
+            &Payload::get_cathode_offset_current_microamps, 
             payload,
             spi_bus, 
             debug_writer);
@@ -139,13 +139,13 @@ pub fn compare_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
 
 pub fn compare_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     expected_voltage_mv: u32,
-    payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+    payload: &'a mut Payload<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
     let voltage_accuracy = self::compare_hvdc_supply(
-            &PayloadController::get_tether_bias_voltage_millivolts, 
-            &PayloadController::get_tether_bias_current_microamps, 
+            &Payload::get_tether_bias_voltage_millivolts, 
+            &Payload::get_tether_bias_current_microamps, 
             expected_voltage_mv,
             payload,
             spi_bus, 
@@ -157,16 +157,16 @@ pub fn compare_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
 
 pub fn compare_heater<'a, USCI: SerialUsci>(
     expected_voltage_mv: u32,
-    payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
+    payload: &'a mut Payload<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
 
     dbg_uwriteln!(debug_writer, "");
 
     // Read voltage, current
-    let heater_voltage_mv = payload.get_heater_voltage_millivolts(spi_bus);
+    let heater_voltage_mv = payload.get_heater_voltage_millivolts();
     dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", heater_voltage_mv);
-    let heater_current_ma = payload.get_heater_current_milliamps(spi_bus);
+    let heater_current_ma = payload.get_heater_current_milliamps();
     dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
     // Calculate expected voltage and current
@@ -187,14 +187,14 @@ pub fn compare_heater<'a, USCI: SerialUsci>(
 }
 
 pub fn measure_repeller_voltage<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
-    payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
+    payload: &'a mut Payload<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) {
     
     dbg_uwriteln!(debug_writer, "");
 
     // Read voltage
-    let repeller_voltage_mv = payload.get_repeller_voltage_millivolts(spi_bus);
+    let repeller_voltage_mv = payload.get_repeller_voltage_millivolts();
     dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", repeller_voltage_mv);
 
     // Calculate expected voltage/current
@@ -205,11 +205,11 @@ pub fn measure_repeller_voltage<'a, USCI: SerialUsci, const DONTCARE: HeaterStat
 }
 
 pub fn compare_pinpuller_current<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
-    payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
+    payload: &'a mut Payload<DONTCARE1, DONTCARE2>, 
     spi_bus: &'a mut PayloadSPIController,
     serial_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a>{
 
-    let measured_current = payload.get_pinpuller_current_milliamps(spi_bus);
+    let measured_current = payload.get_pinpuller_current_milliamps();
     dbg_uwriteln!(serial_writer, "Measured current as {}mA", measured_current);
     let accuracy = calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num());
 
@@ -225,7 +225,7 @@ pub fn measure_aperture_current<'a, const DONTCARE1: PayloadState, const DONTCAR
     dbg_uwriteln!(serial_writer, "Measured current as {}uA", measured_current);
 }
 
-pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_A1>, payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, mut payload_spi_controller: PayloadSPIController) {
+pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_A1>, payload: &mut Payload<{PayloadOn}, {HeaterOn}>, mut payload_spi_controller: PayloadSPIController) {
     // Name of test
     uwriteln!(serial_writer, "========== VACUUM CHAMBER - APERTURE CURRENT SENSE VALIDATION FIRMWARE ==========").ok();
     uwriteln!(serial_writer, "").ok();
@@ -233,7 +233,7 @@ pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_
 
     // Automated performance test to ensure setup is correct
     uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST START ==========").ok();
-    uwriteln!(serial_writer, "{}", crate::testing::AutomatedPerformanceTests::test_cathode_offset_voltage(payload, &mut payload_spi_controller, &mut serial_writer)).ok();
+    uwriteln!(serial_writer, "{}", crate::testing::AutomatedPerformanceTests::test_cathode_offset_voltage(payload, &mut serial_writer)).ok();
 
     uwriteln!(serial_writer, "========== AUTOMATED PERFORMANCE TEST COMPLETE ==========").ok();
     uwriteln!(serial_writer, "").ok();
@@ -257,13 +257,13 @@ pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_
 }
 
 
-pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_writer: &mut SerialWriter<E_USCI_A1>, mut pinpuller_pins: PinpullerActivationPins, 
+pub fn tvac_test(payload: Payload<{PayloadOff}, {HeaterOff}>, serial_writer: &mut SerialWriter<E_USCI_A1>, mut pinpuller_pins: PinpullerActivationPins, 
     mut payload_spi_controller: PayloadSPIController, mut led_pins: LEDPins, mut timer: Timer<TB0>, mut lms_control_pins: TetherLMSPins) -> ! {
     uwriteln!(serial_writer, "==========TVAC TEST FIRMWARE==========").ok();
     delay_cycles(2_000_000);
 
-    let mut payload = payload.into_enabled_payload(&mut payload_spi_controller).into_enabled_heater();
-    crate::testing::AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, &mut payload_spi_controller, serial_writer);
+    let mut payload = payload.into_enabled_payload().into_enabled_heater();
+    crate::testing::AutomatedPerformanceTests::full_system_test(&mut payload, &mut pinpuller_pins, serial_writer);
     let payload = payload.into_disabled_heater().into_disabled_payload();
 
     led_pins.green_led.set_high().ok();
@@ -273,7 +273,7 @@ pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_w
     let mut sec_elapsed_total:u32 = 0;
 
     //  To avoid 'use of moved value' as we mutate the type of payload between loop iterations(?), we make a second variable to store payload here between loops. 
-    let mut payload_off: Option<PayloadController<{PayloadOff}, {HeaterOff}>> = Some(payload);
+    let mut payload_off: Option<Payload<{PayloadOff}, {HeaterOff}>> = Some(payload);
 
     loop{
         // ------------------------------------------------------------------------
@@ -335,13 +335,13 @@ pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_w
         // ------------------------------------------------------------------------
         uwriteln!(serial_writer, "ENTERING EMISSION PHASE").ok();
         // Payload On activated for 44 minutes
-        let mut payload = payload_off.unwrap().into_enabled_payload(&mut payload_spi_controller).into_enabled_heater();
+        let mut payload = payload_off.unwrap().into_enabled_payload().into_enabled_heater();
         
         payload.set_cathode_offset_switch(SwitchState::Connected);
         payload.set_tether_bias_switch(SwitchState::Connected);
-        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-        payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, &mut payload_spi_controller);
-        payload.set_heater_voltage(3160, &mut payload_spi_controller);
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS);
+        payload.set_tether_bias_voltage(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS);
+        payload.set_heater_voltage(3160);
         led_pins.red_led.set_high().ok();
 
         for _ in 0..44*60{
