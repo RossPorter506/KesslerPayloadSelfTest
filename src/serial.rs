@@ -1,7 +1,13 @@
+use core::cell::{RefCell, UnsafeCell};
+
+use critical_section::Mutex;
 use embedded_hal::serial::{Write, Read};
+use msp430fr2355::E_USCI_A1;
 use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
 use ufmt::{uWrite, uwrite, uwriteln, uDisplay};
 use void::Void;
+
+use crate::println;
 
 //Macros to only print if debug_print feature is enabled
 #[macro_export]
@@ -31,6 +37,29 @@ macro_rules! uwrite_coloured {
         }
     }
 }
+
+pub static SERIAL_WR: Mutex<UnsafeCell<Option< SerialWriter<E_USCI_A1> >>> = Mutex::new(UnsafeCell::new(None));
+
+#[macro_export]
+macro_rules! println {
+    ($( $rest:tt )*) => {    
+        critical_section::with(|cs| {
+            if let Some(serial) = unsafe{&mut *$crate::serial::SERIAL_WR.borrow(cs).get()}.as_mut() {
+                uwriteln!(serial,  $($rest)*).ok();
+            }
+        })
+    }
+}
+
+#[macro_export]
+macro_rules! dbg_println {
+    ($( $rest:tt )*) => {    
+        #[cfg(feature = "debug_print")]
+        println!($($rest)*)
+    }
+}
+
+
 pub enum TextColours {
     Red, 
     Green, 
@@ -151,11 +180,11 @@ pub fn maybe_read_num<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> Option<
 }
 
 // Repeatedly queries the user to input a number until a valid one is received.
-pub fn read_num<USCI: SerialUsci>(debug_writer: &mut SerialWriter<USCI>, serial_reader: &mut Rx<USCI> ) -> i32 {
+pub fn read_num<USCI: SerialUsci>(serial_reader: &mut Rx<USCI> ) -> i32 {
     loop {
         match maybe_read_num(serial_reader) {
             Some(n) => return n,
-            _ => uwrite!(debug_writer, "Error parsing number. Try again: ").ok(),
+            _ => println!("Error parsing number. Try again: "),
         };
     }
 }

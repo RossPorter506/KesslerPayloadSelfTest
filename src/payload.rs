@@ -3,10 +3,14 @@
 use core::marker::PhantomData;
 
 use embedded_hal::digital::v2::OutputPin;
+use msp430fr2355::{E_USCI_A1, TB0};
+use msp430fr2x5x_hal::serial::Rx;
+use msp430fr2x5x_hal::timer::Timer;
 
 use crate::digipot::Digipot; 
 use crate::adc::{ApertureADC, MiscADC, TemperatureADC, TemperatureSensor, TetherADC, VccType};
 use crate::dac::{DAC, DACCommand};
+use crate::pcb_common::{DeploySensePins, LEDPins, PinpullerActivationPins, TetherLMSPins};
 use crate::spi::{PayloadSPI, PayloadSPIController, SckPolarity::IdleLow, SckPolarity::IdleHigh, SckPhase::SampleFirstEdge};
 use crate::pcb_mapping::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
 
@@ -31,7 +35,16 @@ pub enum HeaterState {
 
 pub struct PayloadBuilder {}
 impl PayloadBuilder{
-    pub fn build(periph: PayloadPeripherals, mut pins: PayloadControlPins, spi: PayloadSPIController) -> Payload<{PayloadOff}, {HeaterOff}> {
+    pub fn build(
+        periph: PayloadPeripherals, 
+        mut pins: PayloadControlPins, 
+        spi: PayloadSPIController, 
+        pinpuller_pins: PinpullerActivationPins, 
+        lms_control_pins: TetherLMSPins, 
+        deploy_sense_pins: DeploySensePins, 
+        serial_reader: Rx<E_USCI_A1>, 
+        led_pins: LEDPins, 
+        timer: Timer<TB0>) -> Payload<{PayloadOff}, {HeaterOff}> {
         pins.heater_enable.set_low().ok();
         pins.payload_enable.set_low().ok();
         
@@ -42,7 +55,10 @@ impl PayloadBuilder{
             aperture_adc: periph.aperture_adc,
             dac: periph.dac, 
             digipot: periph.digipot, 
-            pins, spi}
+            pins, spi, pinpuller_pins, lms_control_pins,
+            deploy_sense_pins, serial_reader, led_pins,
+            timer
+        }
     }
 }
 
@@ -54,6 +70,12 @@ pub struct Payload<const PSTATE: PayloadState, const HSTATE: HeaterState> {
     pub dac: DAC,
     pub digipot: Digipot,
     pub spi: PayloadSPIController,
+    pub pinpuller_pins: PinpullerActivationPins,
+    pub lms_control_pins: TetherLMSPins,
+    pub deploy_sense_pins: DeploySensePins,
+    pub serial_reader: Rx<E_USCI_A1>,
+    pub led_pins: LEDPins,
+    pub timer: Timer<TB0>,
     pins: PayloadControlPins,
 }
 impl<const PSTATE: PayloadState, const HSTATE: HeaterState> Payload<PSTATE, HSTATE>{
@@ -68,26 +90,30 @@ impl Payload<{PayloadOff}, {HeaterOff}>{
         self.pins.payload_enable.set_high().ok();
         self.dac.send_command(crate::dac::DACCommand::SelectExternalReference, crate::dac::DACChannel::ChannelA, 0x000, self.spi.borrow());
         Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, spi: self.spi}
+                            pins: self.pins, spi: self.spi, pinpuller_pins: self.pinpuller_pins, lms_control_pins: self.lms_control_pins, deploy_sense_pins: self.deploy_sense_pins, 
+                            serial_reader: self.serial_reader, led_pins: self.led_pins, timer: self.timer}
     }
 }
 impl Payload<{PayloadOn}, {HeaterOff}>{
     pub fn into_enabled_heater(mut self) -> Payload<{PayloadOn}, {HeaterOn}> {
         self.pins.heater_enable.set_high().ok();
         Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, spi: self.spi}
+                            pins: self.pins, spi: self.spi, pinpuller_pins: self.pinpuller_pins, lms_control_pins: self.lms_control_pins, deploy_sense_pins: self.deploy_sense_pins, 
+                            serial_reader: self.serial_reader, led_pins: self.led_pins, timer: self.timer}
     }
     pub fn into_disabled_payload(mut self) -> Payload<{PayloadOff}, {HeaterOff}> {
         self.pins.payload_enable.set_low().ok();
         Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, spi: self.spi}
+                            pins: self.pins, spi: self.spi, pinpuller_pins: self.pinpuller_pins, lms_control_pins: self.lms_control_pins, deploy_sense_pins: self.deploy_sense_pins, 
+                            serial_reader: self.serial_reader, led_pins: self.led_pins, timer: self.timer}
     }
 }
 impl Payload<{PayloadOn}, {HeaterOn}>{
     pub fn into_disabled_heater(mut self) -> Payload<{PayloadOn}, {HeaterOff}> {
         self.pins.heater_enable.set_low().ok();
         Payload { tether_adc: self.tether_adc, temperature_adc: self.temperature_adc, misc_adc: self.misc_adc, aperture_adc: self.aperture_adc, dac: self.dac, digipot: self.digipot, 
-                            pins: self.pins, spi: self.spi}
+                            pins: self.pins, spi: self.spi, pinpuller_pins: self.pinpuller_pins, lms_control_pins: self.lms_control_pins, deploy_sense_pins: self.deploy_sense_pins, 
+                            serial_reader: self.serial_reader, led_pins: self.led_pins, timer: self.timer}
     }
 }
 // Actual sensor functions. These are always available.
