@@ -89,9 +89,10 @@ fn configure_board() -> Payload<{PayloadOff}, {HeaterOff}>{
         .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
         .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
         .freeze(&mut fram);
+    msp430::asm::nop();
     
     led_pins.yellow_led.toggle().ok();
-    
+
     // Timer configuration
     let parts = TimerParts3::new(
         regs.TB0,
