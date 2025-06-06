@@ -24,20 +24,30 @@ use crate::testing::{calculate_performance_result, calculate_rpd, in_place_avera
 const CELCIUS_TO_KELVIN_OFFSET: u16 = 273;
 
 pub fn emission_sensing<USCI:SerialUsci>(
+    expected_heater_voltage_mv: u32,
+    expected_tb_voltage_mv: u32,
+    expected_co_voltage_mv: u32,
     payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>){
 
-    for sensor_result in test_heater(payload, spi_bus, serial).iter(){
+    // Compare heater voltage AND current against expected values
+    for sensor_result in compare_heater(expected_heater_voltage_mv, payload, spi_bus, serial).iter(){
         uwriteln!(serial, "{}", sensor_result).ok();
     }
 
-    let fn_arr = [test_cathode_offset, test_tether_bias, test_repeller];
-    for sensor_fn in fn_arr.iter() {
-        let result = sensor_fn(payload, spi_bus, serial);
+    // Compare tether bias and cathode offset voltages against expected values
+    let fn_arr          = [compare_cathode_offset, compare_tether_bias];
+    let expected_values = [expected_co_voltage_mv, expected_tb_voltage_mv];
+    for (sensor_fn, expected_voltage) in fn_arr.iter().zip(expected_values) {
+        let result = sensor_fn(expected_voltage, payload, spi_bus, serial);
         uwriteln!(serial, "{}", result).ok();
     }
-    uwriteln!(serial, "{}", test_repeller(payload, spi_bus, serial)).ok();
+
+    // We don't have a good idea of what these *should* be, so just print out their value
+    measure_aperture_current(payload, spi_bus, serial);
+    measure_repeller_voltage(payload, spi_bus, serial);
+
     print_temperatures(payload, spi_bus, serial);
 }
 
@@ -46,7 +56,7 @@ pub fn deployment_sensing<USCI:SerialUsci>(
     spi_bus: &mut PayloadSPIController, 
     serial: &mut SerialWriter<USCI>) {
     
-    uwriteln!(serial, "{}", test_pinpuller_current_sensor(payload, spi_bus, serial)).ok();
+    uwriteln!(serial, "{}", compare_pinpuller_current(payload, spi_bus, serial)).ok();
     print_temperatures(payload, spi_bus, serial);
 }
 
@@ -81,10 +91,10 @@ pub fn print_temperatures<const DONTCARE1:PayloadState, const DONTCARE2:HeaterSt
     uwriteln!(debug_writer, "").ok();
 }
 
-fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
+fn compare_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     measure_voltage_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
     measure_current_fn: &dyn Fn(&mut PayloadController<{PayloadOn}, DONTCARE>, &mut PayloadSPIController) -> i32,
-    supply_max: u32,
+    expected_voltage_mv: u32,
     payload: &mut PayloadController<{PayloadOn}, DONTCARE>,
     spi_bus: &mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> Fxd {
@@ -100,7 +110,7 @@ fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     dbg_uwriteln!(debug_writer, "Measured output current: {}uA", measured_current_ua);
 
     // Calculate expected voltage and current
-    let expected_voltage_mv: i32 = supply_max as i32;
+    let expected_voltage_mv: i32 = expected_voltage_mv as i32;
 
     dbg_uwriteln!(debug_writer, "Expected output voltage: {}mV", expected_voltage_mv);
 
@@ -109,16 +119,16 @@ fn test_hvdc_supply<const DONTCARE: HeaterState, USCI:SerialUsci>(
     voltage_accuracy
 }
 
-pub fn test_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+pub fn compare_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+    expected_voltage_mv: u32,
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
-
-    let voltage_accuracy = self::test_hvdc_supply(
+    let voltage_accuracy = self::compare_hvdc_supply(
             &PayloadController::get_cathode_offset_voltage_millivolts, 
             &PayloadController::get_cathode_offset_current_microamps, 
-            200_000,
+            expected_voltage_mv,
             payload,
             spi_bus, 
             debug_writer);
@@ -127,16 +137,16 @@ pub fn test_cathode_offset<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     voltage_result
 }
 
-pub fn test_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+pub fn compare_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
+    expected_voltage_mv: u32,
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController,
     debug_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a> {
 
-
-    let voltage_accuracy = self::test_hvdc_supply(
+    let voltage_accuracy = self::compare_hvdc_supply(
             &PayloadController::get_tether_bias_voltage_millivolts, 
             &PayloadController::get_tether_bias_current_microamps, 
-            200_000,
+            expected_voltage_mv,
             payload,
             spi_bus, 
             debug_writer);
@@ -145,7 +155,8 @@ pub fn test_tether_bias<'a, const DONTCARE: HeaterState, USCI:SerialUsci>(
     voltage_result
 }
 
-pub fn test_heater<'a, USCI: SerialUsci>(
+pub fn compare_heater<'a, USCI: SerialUsci>(
+    expected_voltage_mv: u32,
     payload: &'a mut PayloadController<{PayloadOn}, {HeaterOn}>, 
     spi_bus: &'a mut PayloadSPIController, 
     debug_writer: &mut SerialWriter<USCI> ) -> [PerformanceResult<'a>; 2] {
@@ -159,7 +170,7 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     dbg_uwriteln!(debug_writer, "Read current as: {}mA", heater_current_ma);
 
     // Calculate expected voltage and current
-    let expected_voltage_mv: u16 = 2_000;
+    let expected_voltage_mv = expected_voltage_mv as u16;
     let expected_current_ma: i16 = (expected_voltage_mv as u32 * 1000 / heater_mock::CIRCUIT_RESISTANCE_MOHMS as u32)
             .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num()) as i16;
     dbg_uwriteln!(debug_writer, "Expected current is: {}mA", expected_current_ma);
@@ -175,10 +186,10 @@ pub fn test_heater<'a, USCI: SerialUsci>(
     [voltage_result, current_result]
 }
 
-pub fn test_repeller<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
+pub fn measure_repeller_voltage<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
     payload: &'a mut PayloadController<{PayloadOn}, DONTCARE>, 
     spi_bus: &'a mut PayloadSPIController, 
-    debug_writer: &mut SerialWriter<USCI> ) -> PerformanceResult<'a> {
+    debug_writer: &mut SerialWriter<USCI> ) {
     
     dbg_uwriteln!(debug_writer, "");
 
@@ -187,15 +198,13 @@ pub fn test_repeller<'a, USCI: SerialUsci, const DONTCARE: HeaterState>(
     dbg_uwriteln!(debug_writer, "Read voltage as: {}mV", repeller_voltage_mv);
 
     // Calculate expected voltage/current
-    let expected_voltage_mv: u32 = TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS;
-
-    let voltage_rpd = calculate_rpd(repeller_voltage_mv, expected_voltage_mv as i32);
+    // Do we actually know what the repeller voltage should be?
+    //let voltage_rpd = calculate_rpd(repeller_voltage_mv, expected_voltage_mv as i32);
     
-
-    calculate_performance_result("Repeller voltage", voltage_rpd, 5, 20)
+    //calculate_performance_result("Repeller voltage", voltage_rpd, 5, 20)
 }
 
-pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+pub fn compare_pinpuller_current<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
     payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
     spi_bus: &'a mut PayloadSPIController,
     serial_writer: &mut SerialWriter<USCI>) -> PerformanceResult<'a>{
@@ -205,6 +214,15 @@ pub fn test_pinpuller_current_sensor<'a, const DONTCARE1: PayloadState, const DO
     let accuracy = calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num());
 
     calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
+}
+
+pub fn measure_aperture_current<'a, const DONTCARE1: PayloadState, const DONTCARE2:HeaterState, USCI:SerialUsci>(
+    payload: &'a mut PayloadController<DONTCARE1, DONTCARE2>, 
+    spi_bus: &'a mut PayloadSPIController,
+    serial_writer: &mut SerialWriter<USCI>) {
+
+    let measured_current = payload.get_aperture_current_microamps(spi_bus);
+    dbg_uwriteln!(serial_writer, "Measured current as {}uA", measured_current);
 }
 
 pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_A1>, payload: &mut PayloadController<{PayloadOn}, {HeaterOn}>, mut payload_spi_controller: PayloadSPIController) {
@@ -333,7 +351,8 @@ pub fn tvac_test(payload: PayloadController<{PayloadOff}, {HeaterOff}>, serial_w
             sec_elapsed_total += 1;
             uwriteln!(serial_writer, "{} seconds elapsed in the current phase", sec_elapsed_phase).ok();
             uwriteln!(serial_writer, "{} seconds elapsed in the total test", sec_elapsed_total).ok();
-            emission_sensing(&mut payload, &mut payload_spi_controller, serial_writer)
+            emission_sensing(3160, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, 
+                &mut payload, &mut payload_spi_controller, serial_writer)
         }
 
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
