@@ -7,18 +7,14 @@ use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
 use ufmt::{uWrite, uwrite, uwriteln, uDisplay};
 use void::Void;
 
-use crate::println;
-
 //Macros to only print if debug_print feature is enabled
-#[macro_export]
 macro_rules! dbg_uwriteln {
     ($first:tt $(, $( $rest:tt )* )?) => {    
         #[cfg(feature = "debug_print")]
         {uwrite!($first, "[....] ").ok(); uwriteln!($first, $( $($rest)* )*).ok();}
     }
 }
-#[allow(unused_macros)]
-#[macro_export]
+
 macro_rules! dbg_uwrite {
     ($first:tt $(, $( $rest:tt )* )?) => {    
         #[cfg(feature = "debug_print")]
@@ -27,7 +23,6 @@ macro_rules! dbg_uwrite {
 }
 
 // Colour printing
-#[macro_export]
 macro_rules! uwrite_coloured {    
     ($a:expr, $b:expr, $c:expr) => {
         match $c{
@@ -52,12 +47,37 @@ macro_rules! println {
 }
 
 #[macro_export]
+macro_rules! print {
+    ($( $rest:tt )*) => {    
+        critical_section::with(|cs| {
+            if let Some(serial) = unsafe{&mut *$crate::serial::SERIAL_WR.borrow(cs).get()}.as_mut() {
+                uwrite!(serial,  $($rest)*).ok();
+            }
+        })
+    }
+}
+
+#[macro_export]
 macro_rules! dbg_println {
     ($( $rest:tt )*) => {    
         #[cfg(feature = "debug_print")]
-        println!($($rest)*)
+        {
+            $crate::print!("[....] "); $crate::println!($($rest)*)
+        }
     }
 }
+
+#[macro_export]
+macro_rules! dbg_print {
+    ($( $rest:tt )*) => {    
+        #[cfg(feature = "debug_print")]
+        {
+            $crate::print!("[....] "); $crate::print!($($rest)*)
+        }
+    }
+}
+
+pub(crate) use uwrite_coloured;
 
 
 pub enum TextColours {

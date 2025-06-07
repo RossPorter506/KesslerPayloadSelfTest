@@ -8,4 +8,5 @@
         "--message-format=json"
     ],
     "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.cargo.allTargets": false,
 }

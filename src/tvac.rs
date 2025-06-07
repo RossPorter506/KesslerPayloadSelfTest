@@ -15,7 +15,6 @@ use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use crate::serial::{read_num, TextColours::*};
-use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 type Fxd = FixedI64::<32>;
 
@@ -30,6 +29,7 @@ pub fn emission_sensing(
     payload: &mut Payload<{PayloadOn}, {HeaterOn}>){
 
     // Compare heater voltage AND current against expected values
+    dbg_println!("");
     for sensor_result in compare_heater(expected_heater_voltage_mv, payload).iter(){
         println!("{}", sensor_result);
     }
@@ -38,11 +38,13 @@ pub fn emission_sensing(
     let fn_arr          = [compare_cathode_offset, compare_tether_bias];
     let expected_values = [expected_co_voltage_mv, expected_tb_voltage_mv];
     for (sensor_fn, expected_voltage) in fn_arr.iter().zip(expected_values) {
+        dbg_println!("");
         let result = sensor_fn(expected_voltage, payload);
         println!("{}", result);
     }
 
     // We don't have a good idea of what these *should* be, so just print out their value
+    dbg_println!("");
     measure_aperture_current(payload);
     measure_repeller_voltage(payload);
     print_temperatures(payload);
@@ -82,8 +84,6 @@ fn compare_hvdc_supply<const DONTCARE: HeaterState>(
     measure_current_fn: &dyn Fn(&mut Payload<{PayloadOn}, DONTCARE>) -> i32,
     expected_voltage_mv: u32,
     payload: &mut Payload<{PayloadOn}, DONTCARE>) -> Fxd {
-
-    dbg_println!("");
     
     const SENSE_RESISTANCE: u32 = 1; // Both supplies use the same sense resistor value
         
@@ -135,8 +135,6 @@ pub fn compare_heater(
     expected_voltage_mv: u32,
     payload: &mut Payload<{PayloadOn}, {HeaterOn}>) -> [PerformanceResult<'_>; 2] {
 
-    dbg_println!("");
-
     // Read voltage, current
     let heater_voltage_mv = payload.get_heater_voltage_millivolts();
     dbg_println!("Read voltage as: {}mV", heater_voltage_mv);
@@ -163,11 +161,9 @@ pub fn compare_heater(
 pub fn measure_repeller_voltage<const DONTCARE: HeaterState>(
     payload: &mut Payload<{PayloadOn}, DONTCARE>,) {
     
-    dbg_println!("");
-
     // Read voltage
     let repeller_voltage_mv = payload.get_repeller_voltage_millivolts();
-    dbg_println!("Read voltage as: {}mV", repeller_voltage_mv);
+    println!("Repeller voltage measured as: {}mV", repeller_voltage_mv);
 
     // Calculate expected voltage/current
     // Do we actually know what the repeller voltage should be?
@@ -180,7 +176,7 @@ pub fn compare_pinpuller_current<const DONTCARE1: PayloadState, const DONTCARE2:
     payload: &mut Payload<DONTCARE1, DONTCARE2>) -> PerformanceResult<'_>{
 
     let measured_current = payload.get_pinpuller_current_milliamps();
-    dbg_println!("Measured current as {}mA", measured_current);
+    dbg_println!("Pinpuller current measured as: {}mA", measured_current);
     let accuracy = calculate_rpd(measured_current as i32, pinpuller_mock::EXPECTED_ON_CURRENT.to_num());
 
     calculate_performance_result("Pinpuller current sense",  accuracy,  5, 20)
@@ -190,7 +186,7 @@ pub fn measure_aperture_current<const DONTCARE1: PayloadState, const DONTCARE2:H
     payload: &mut Payload<DONTCARE1, DONTCARE2>) {
 
     let measured_current = payload.get_aperture_current_microamps();
-    dbg_println!("Measured current as {}uA", measured_current);
+    println!("Aperture current measured as: {}uA", measured_current);
 }
 
 pub fn aperture_current_sense_validation(mut serial_writer: SerialWriter<E_USCI_A1>, payload: &mut Payload<{PayloadOn}, {HeaterOn}>, mut payload_spi_controller: PayloadSPIController) {

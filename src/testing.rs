@@ -13,7 +13,6 @@ use crate::serial::{SerialWriter, wait_for_any_packet, Printable, read_num, Text
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use crate::{dbg_uwriteln, uwrite_coloured};
 use fixed::{self, FixedI64};
 
 // We use this type a lot. 
@@ -406,6 +405,7 @@ impl AutomatedPerformanceTests{
         set_switch_fn(payload, SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (TEST_START_PERCENT..=TEST_END_PERCENT).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let set_voltage_mv: u32 = ((100-output_percentage)*(supply_min) + output_percentage*(supply_max)) / 100;
+            dbg_println!("");
             dbg_println!( "Target output voltage: {}mV", set_voltage_mv);
 
             // Set cathode voltage
@@ -432,7 +432,6 @@ impl AutomatedPerformanceTests{
 
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
             current_accuracy = in_place_average(current_accuracy, current_rpd,i as u16);
-            dbg_println!( "");
         }
 
         // Set back to zero
@@ -506,6 +505,7 @@ impl AutomatedPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv);
 
+            dbg_println!( "");
             dbg_println!( "Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
             
@@ -525,7 +525,6 @@ impl AutomatedPerformanceTests{
             dbg_println!( "Voltage milliRPD is: {}", (voltage_rpd*1000).to_num::<i32>());
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
             current_accuracy = in_place_average(current_accuracy, calculate_rpd(heater_current_ma as i32, expected_current_ma as i32), i as u16);
-            dbg_println!( "");
         }
 
         let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
@@ -542,9 +541,10 @@ impl AutomatedPerformanceTests{
         let mut accuracy: Fxd = Fxd::ZERO;
 
         // For each pin, activate the pinpuller through that channel and measure the current
-        
+        dbg_println!( "");
         for n in 0..4 {
             pin_select(payload, n).0.set_high().ok();
+            delay_cycles(1_000);
             let measured_current = payload.get_pinpuller_current_milliamps();
             dbg_println!("Measured current as {}mA", measured_current);
             accuracy = in_place_average(accuracy, 
@@ -1241,8 +1241,8 @@ impl ufmt::uDisplay for SensorResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         uwrite!(f, "[").ok();
         match self.result {
-            true => uwrite_coloured!(f, " OK ", Green),
-            false => uwrite_coloured!(f, "FAIL", Red)};
+            true => crate::serial::uwrite_coloured!(f, " OK ", Green),
+            false => crate::serial::uwrite_coloured!(f, "FAIL", Red)};
 
         uwrite!(f, "] {}", self.name).ok();
         Ok(())
@@ -1266,9 +1266,9 @@ impl ufmt::uDisplay for PerformanceResult<'_> {
     fn fmt<W: uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<W>) -> Result<(), W::Error> {
         uwrite!(f, "[").ok();
         match self.performance {
-            Performance::Nominal    => uwrite_coloured!(f, " OK ", Green),
-            Performance::Inaccurate => uwrite_coloured!(f, "INAC", Yellow),
-            Performance::NotWorking => uwrite_coloured!(f, "FAIL", Red),};
+            Performance::Nominal    => crate::serial::uwrite_coloured!(f, " OK ", Green),
+            Performance::Inaccurate => crate::serial::uwrite_coloured!(f, "INAC", Yellow),
+            Performance::NotWorking => crate::serial::uwrite_coloured!(f, "FAIL", Red),};
         
         uwrite!(f, "] {}, {}% error", self.name, (100*self.accuracy).printable()).ok();
         Ok(())
