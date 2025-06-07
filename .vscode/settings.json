@@ -1,4 +1,12 @@
 {
     "rust-analyzer.checkOnSave.allTargets": false,
-    "rust-analyzer.cargo.buildScripts.overrideCommand": ["cargo", "check", "--quiet", "--workspace", "--message-format=json"],
+    "rust-analyzer.cargo.buildScripts.overrideCommand": [
+        "cargo",
+        "check",
+        "--quiet",
+        "--workspace",
+        "--message-format=json"
+    ],
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.cargo.allTargets": false,
 }
