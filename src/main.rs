@@ -8,18 +8,18 @@
 #![feature(adt_const_params)]
 #![feature(const_trait_impl)]
 
-use core::{ops::DerefMut, cell::UnsafeCell};
+use core::{cell::{RefCell, UnsafeCell}, ops::DerefMut};
 
-use critical_section::{with, CriticalSection};
+use critical_section::{with, CriticalSection, Mutex};
 use embedded_hal::{digital::v2::*, timer::{CountDown, self}, blocking::i2c};
 use msp430_rt::entry;
-use msp430fr2355::{P1, P2, P3, P4, P5, P6, PMM};
+use msp430fr2355::{E_USCI_A1, P1, P2, P3, P4, P5, P6, PMM};
 use msp430fr2x5x_hal::{gpio::Batch, pmm::Pmm, watchdog::Wdt, rtc::{Rtc, RtcDiv}, 
     serial::{SerialConfig, StopBits, BitOrder, BitCount, Parity, Loopback, SerialUsci}, 
     clock::{ClockConfig, DcoclkFreqSel, MclkDiv}, fram::Fram,
     timer::{TimerParts3, TimerConfig, CapCmpTimer3, TBxIV, Timer}};
 use nb::block;
-#[allow(unused_imports)]
+use tvac::tvac_test;
 use ufmt::{uwrite, uwriteln};
 
 #[cfg(debug_assertions)]
@@ -45,73 +45,89 @@ mod tvac;
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
 use void::ResultVoidExt;
 
-use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::PayloadController};
+use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::Payload};
 
 #[allow(unused_mut)]
 #[entry]
-fn main() -> !{
-    if let Some(periph) = msp430fr2355::Peripherals::take() {
-        let _wdt = Wdt::constrain(periph.WDT_A);
+fn main() -> ! {
+    let board = configure_board();
+
+    tvac::tvac_test(board);
+
+    idle_loop(&mut board.led_pins);
+}
+
+/// Take and configure MCU peripherals 
+fn configure_board() -> Payload<{PayloadOff}, {HeaterOff}>{
+    let Some(regs) = msp430fr2355::Peripherals::take() else { loop{} };
+    let _wdt = Wdt::constrain(regs.WDT_A);
         
-        let (payload_spi_pins, 
-            mut pinpuller_pins, 
-            mut led_pins, 
-            mut payload_control_pins, 
-            mut lms_control_pins, 
-            mut deploy_sense_pins, 
-            mut payload_peripheral_cs_pins, 
-            debug_serial_pins) = collect_pins(periph.PMM, periph.P1, periph.P2, periph.P3, periph.P4, periph.P5, periph.P6);
-        
-        lms_control_pins.lms_led_enable.set_low().ok();
-        led_pins.green_led.toggle().ok();
-        delay_cycles(100_000);
-        
-        // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
-        // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
-        let mut payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
-
-        // Collate peripherals into a single struct
-        let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins);
-        // Create an object to manage payload state
-        let mut payload = PayloadBuilder::build(payload_peripherals, payload_control_pins);
-        
-        let mut fram = Fram::new(periph.FRCTL);
-
-        let (smclk, aclk) = ClockConfig::new(periph.CS)
-            .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
-            .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
-            .freeze(&mut fram);
-        for _ in 0..2 {msp430::asm::nop();} // seems to be some weird bug with clock selection. MSP hangs in release mode when this is removed.      
-        
-        let parts = TimerParts3::new(
-            periph.TB0,
-            TimerConfig::aclk(&aclk),
-        );
-        let mut timer = parts.timer;
-
-        led_pins.yellow_led.toggle().ok();
-
-        let (serial_tx_pin, mut serial_reader) = SerialConfig::new(  
-            periph.E_USCI_A1,
-            BitOrder::LsbFirst,
-            BitCount::EightBits,
-            StopBits::OneStopBit,
-            Parity::NoParity,
-            Loopback::NoLoop,
-            115200)
-            .use_smclk(&smclk)
-            .split(debug_serial_pins.tx, debug_serial_pins.rx);
-
-        led_pins.red_led.toggle().ok();
-        // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
-        let mut serial_writer = SerialWriter::new(serial_tx_pin);
-
-        tvac::tvac_test(payload, &mut serial_writer, pinpuller_pins, payload_spi_controller, led_pins, timer, lms_control_pins);
-
-        idle_loop(&mut led_pins);
-    }
+    let (payload_spi_pins, 
+        pinpuller_pins, 
+        mut led_pins, 
+        payload_control_pins, 
+        mut lms_control_pins, 
+        deploy_sense_pins, 
+        payload_peripheral_cs_pins, 
+        debug_serial_pins) = collect_pins(regs.PMM, regs.P1, regs.P2, regs.P3, regs.P4, regs.P5, regs.P6);
     
-    else {#[allow(clippy::empty_loop)] loop{}}
+    lms_control_pins.lms_led_enable.set_low().ok();
+    led_pins.green_led.toggle().ok();
+    delay_cycles(100_000);
+    
+    // As the bus's idle state is part of it's type, peripherals will not accept an incorrectly configured bus
+    // The SPI controller handles all of this for us. All we need to do is call .borrow() to get a mutable reference to it
+    let payload_spi_controller = PayloadSPIController::new(payload_spi_pins);
+
+    // Collate peripherals into a single struct
+    let payload_peripherals = collect_payload_peripherals(payload_peripheral_cs_pins);
+    
+    let mut fram = Fram::new(regs.FRCTL);
+
+    // Clock selection
+    let (smclk, aclk, delay) = ClockConfig::new(regs.CS)
+        .mclk_dcoclk(DcoclkFreqSel::_1MHz, MclkDiv::_1)
+        .smclk_on(msp430fr2x5x_hal::clock::SmclkDiv::_1)
+        .freeze(&mut fram);
+    msp430::asm::nop();
+    
+    led_pins.yellow_led.toggle().ok();
+
+    // Timer configuration
+    let parts = TimerParts3::new(
+        regs.TB0,
+        TimerConfig::aclk(&aclk),
+    );
+    let timer = parts.timer;
+
+    // Serial configuration
+    let (serial_tx_pin, serial_reader) = SerialConfig::new(  
+        regs.E_USCI_A1,
+        BitOrder::LsbFirst,
+        BitCount::EightBits,
+        StopBits::OneStopBit,
+        Parity::NoParity,
+        Loopback::NoLoop,
+        115200)
+        .use_smclk(&smclk)
+        .split(debug_serial_pins.tx, debug_serial_pins.rx);
+
+    // Create an object to manage payload state
+    led_pins.red_led.toggle().ok();
+    let payload = PayloadBuilder::build(payload_peripherals, payload_control_pins, payload_spi_controller, 
+        pinpuller_pins, lms_control_pins, deploy_sense_pins, serial_reader, led_pins, timer);
+    
+    // Wrapper struct so we can use ufmt traits like uwrite! and uwriteln!
+    let serial_writer = SerialWriter::new(serial_tx_pin);
+
+    // Move serial_writer into a static variable so we can print from anywhere without having to carry it around
+    critical_section::with(|cs| {
+        unsafe { &mut *crate::serial::SERIAL_WR.borrow(cs).get() }.replace(serial_writer);
+    });
+
+    println!("Hello world!");
+
+    payload
 }
 
 fn idle_loop(led_pins: &mut LEDPins) -> ! {
