@@ -246,7 +246,7 @@ pub fn tvac_test(payload: Payload<{PayloadOff}, {HeaterOff}>) -> ! {
         if let Some(payload) = payload_off.as_mut() { 
             for _ in 0..45*60{
                 // LEAVE PAYLOAD OFF FOR 45 MINUTES
-                block!(payload.timer.wait()).void_unwrap();
+                block!(payload.timer.wait()).unwrap();
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 println!("{} seconds elapsed in the current phase", sec_elapsed_phase);
@@ -271,7 +271,7 @@ pub fn tvac_test(payload: Payload<{PayloadOff}, {HeaterOff}>) -> ! {
 
             for _ in 0..60{           
                 // LEAVE PINPULLER ON FOR 60 SECONDS
-                block!(payload.timer.wait()).void_unwrap();
+                block!(payload.timer.wait()).unwrap();
                 sec_elapsed_phase += 1;
                 sec_elapsed_total += 1;
                 println!("{} seconds elapsed in the current phase", sec_elapsed_phase);
@@ -305,7 +305,7 @@ pub fn tvac_test(payload: Payload<{PayloadOff}, {HeaterOff}>) -> ! {
 
         for _ in 0..44*60{
             // ENTER CODE TO READ SENSORS FOR 44 MINUTES
-            block!(payload.timer.wait()).void_unwrap();
+            block!(payload.timer.wait()).unwrap();
             sec_elapsed_phase += 1;
             sec_elapsed_total += 1;
             println!("{} seconds elapsed in the current phase", sec_elapsed_phase);
