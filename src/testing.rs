@@ -1031,7 +1031,9 @@ impl ManualPerformanceTests{
         for (i, output_percentage) in (10..=100u32).step_by(100/NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100-output_percentage)*(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS) 
                                             + output_percentage *(TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS)) / 100;
-            
+
+            payload.set_tether_bias_voltage(output_voltage_mv);
+
             let expected_voltage_mv: u32 = output_voltage_mv; // assume zero error between target voltage and actual voltage
             let expected_current_ua: i16 = ((1000*expected_voltage_mv) / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS)) as i16;
             dbg_println!( "Expected current is: {}mA", expected_current_ua);
