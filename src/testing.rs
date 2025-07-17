@@ -143,9 +143,10 @@ impl AutomatedFunctionalTests{
         
         for n in 0..4 {
             pin_select(payload, n).0.set_high().ok();
+            delay_cycles(1_000_000);
             results[n] = payload.get_pinpuller_current_milliamps() > ON_MILLIAMP_THRESHOLD;
             pin_select(payload, n).0.set_low().ok();
-            delay_cycles(1000);
+            delay_cycles(1_000_000);
         }
         
         [SensorResult{name: "Pinpuller channel 1",        result: results[0]}, 
@@ -1236,7 +1237,7 @@ impl ManualPerformanceTests{
 /// Functional test result.
 pub struct SensorResult<'a> {
     name: &'a str,
-    result: bool,
+    pub result: bool,
 }
 // Define how to print a SensorResult
 impl ufmt::uDisplay for SensorResult<'_> {

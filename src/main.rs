@@ -50,11 +50,22 @@ use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIV
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
-    let board = configure_board();
+    let mut board = configure_board();
 
-    let mut board = testing::self_test(board);
+    board.led_pins.green_led.set_low().ok();
+    board.led_pins.red_led.set_low().ok();
+    board.led_pins.yellow_led.set_low().ok();
 
-    idle_loop(&mut board.led_pins);
+    let results = testing::AutomatedFunctionalTests::pinpuller_functional_test(&mut board);
+
+    match (results[0].result, results[1].result, results[2].result, results[3].result) {
+        (true, true, true, true) => board.led_pins.green_led.set_high().ok(),
+        _                        => board.led_pins.red_led.set_high().ok()
+    };
+    loop {}
+    //let mut board = testing::self_test(board);
+
+    //idle_loop(&mut board.led_pins);
 }
 
 /// Take and configure MCU peripherals 
