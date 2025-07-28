@@ -45,7 +45,7 @@ mod tvac;
 mod testing; use testing::{AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests, ManualPerformanceTests};
 use void::ResultVoidExt;
 
-use crate::{pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS}, payload::Payload};
+use crate::{payload::Payload, pcb_mapping::power_supply_limits::{CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS, HEATER_MAX_VOLTAGE_MILLIVOLTS, TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS}, testing::pin_select};
 
 #[allow(unused_mut)]
 #[entry]
@@ -56,13 +56,21 @@ fn main() -> ! {
     board.led_pins.red_led.set_low().ok();
     board.led_pins.yellow_led.set_low().ok();
 
-    let results = testing::AutomatedFunctionalTests::pinpuller_functional_test(&mut board);
+    //let results = testing::AutomatedFunctionalTests::pinpuller_functional_test(&mut board);
 
-    match (results[0].result, results[1].result, results[2].result, results[3].result) {
-        (true, true, true, true) => board.led_pins.green_led.set_high().ok(),
-        _                        => board.led_pins.red_led.set_high().ok()
-    };
-    loop {}
+    for n in 0..4 {
+            pin_select(&mut board, n).0.set_high().ok();
+            delay_cycles(2_000_000);
+            let current = board.get_pinpuller_current_milliamps();
+            println!("{}", current);
+            pin_select(&mut board, n).0.set_low().ok();
+            delay_cycles(1_000_000);
+        }
+
+    loop {
+        println!("Done!");
+        delay_cycles(1_000_000);
+    }
     //let mut board = testing::self_test(board);
 
     //idle_loop(&mut board.led_pins);
