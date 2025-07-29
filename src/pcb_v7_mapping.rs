@@ -123,11 +123,10 @@ pub mod sensor_equations {
         compile_error!("Not yet calibrated");
 
         #[cfg(feature = "7B")]
-        // Being calibrated
-        return (((v_adc_millivolts as i32 * 1035)/310) - 45).max(0) as u16;
+        return (((((((((v_adc_millivolts as i32 * 1035)/310) - 90) * 964) / 1000) + 75) * 979) / 1000) + 30).max(0) as u16;
 
         #[cfg(feature = "7C")]
-        compile_error!("Not yet calibrated");
+        return ((((((v_adc_millivolts as i32 * 1035)/310) - 90) * 964) / 1000) + 75).max(0) as u16;
 
         #[cfg(feature = "7D")]
         compile_error!("Not yet calibrated");

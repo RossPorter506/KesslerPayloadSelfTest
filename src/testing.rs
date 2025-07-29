@@ -6,7 +6,7 @@ use msp430fr2x5x_hal::serial::{SerialUsci, Rx};
 use msp430fr2x5x_hal::{pmm::Pmm, gpio::Batch};
 use ufmt::{uWrite, uwrite, uwriteln};
 
-use crate::{dbg_println, delay_cycles, println};
+use crate::{dbg_println, delay_cycles, print, println};
 use crate::payload::{Payload, PayloadState, PayloadState::*, HeaterState, HeaterState::*, SwitchState};
 use crate::serial::{SerialWriter, wait_for_any_packet, Printable, read_num, TextColours::*};
 #[allow(unused_imports)]
@@ -1061,11 +1061,7 @@ impl ManualPerformanceTests{
         current_result
     }
 
-    pub fn test_heater_voltage<'a, USCI: SerialUsci>(
-        payload: &'a mut Payload<{PayloadOn}, {HeaterOn}>, 
-        spi_bus: &'a mut PayloadSPIController, 
-        debug_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>) -> PerformanceResult<'a> {
+    pub fn test_heater_voltage(payload: &mut Payload<{PayloadOn}, {HeaterOn}>) -> PerformanceResult<'_> {
         
         const NUM_MEASUREMENTS: usize = 10;
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
@@ -1076,17 +1072,19 @@ impl ManualPerformanceTests{
             // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv);
 
-            uwriteln!(debug_writer, "Target set to: {}mV", output_voltage_mv).ok();
+            println!("Target set to: {}mV", output_voltage_mv);
 
-            uwrite!(debug_writer, "Measure voltage and input (in mV): ").ok();
-            let actual_voltage_mv = read_num(serial_reader);
-            uwriteln!(debug_writer, "").ok();
+            print!("Measure voltage and input (in mV): ");
+            let actual_voltage_mv = read_num(&mut payload.serial_reader);
+            println!("");
 
             let measured_voltage_mv = payload.get_heater_voltage_millivolts();
+            println!("Measured as: {}", measured_voltage_mv);
 
             let voltage_rpd = calculate_rpd(measured_voltage_mv as i32, actual_voltage_mv);
-            uwriteln!(debug_writer, "Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>()).ok();
+            println!("Calculated voltage millirpd: {}", (voltage_rpd*1000).to_num::<i32>());
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd,i as u16);
+            println!("");
         }
 
         let voltage_result = calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
