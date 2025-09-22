@@ -173,17 +173,19 @@ pub mod sensor_equations {
     use fixed::FixedI64;
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16 {
+        let offical_equation = (v_adc_millivolts as i32 * 1035) / 310;
+
         #[cfg(feature = "7A")]
-        compile_error!("Not yet calibrated");
+        return (((offical_equation - 841) * 959)/1000 + 821).max(0) as u16;
 
         #[cfg(feature = "7B")]
-        return (((((((((v_adc_millivolts as i32 * 1035) / 310) - 90) * 964) / 1000) + 75) * 979)
+        return (((((((offical_equation - 90) * 964) / 1000) + 75) * 979)
             / 1000)
             + 30)
             .max(0) as u16;
 
         #[cfg(feature = "7C")]
-        return ((((((v_adc_millivolts as i32 * 1035) / 310) - 90) * 964) / 1000) + 75).max(0)
+        return ((((offical_equation - 90) * 964) / 1000) + 75).max(0)
             as u16;
 
         #[cfg(feature = "7D")]
@@ -193,10 +195,34 @@ pub mod sensor_equations {
         (2755 - v_adc_millivolts as i32) * 102
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        ((v_adc_millivolts as i32 * 10891) / 100) + 3708
+        let offical_equation = ((v_adc_millivolts as i32 * 10891) / 100) + 3708;
+
+        #[cfg(feature = "7A")]
+        return ((offical_equation - 25668) * 951) / 1000 + 23645;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation;
+
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        ((v_adc_millivolts as i32) * -84714 / 1000) + 406089
+        let offical_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
+
+        #[cfg(feature = "7A")]
+        return ((offical_equation - 25810) * 997)/ 1000 + 24886;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation;
+        
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
         (((v_adc_millivolts * 9) / 50) - 3) as i16

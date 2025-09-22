@@ -1341,8 +1341,9 @@ impl ManualPerformanceTests {
             delay_cycles(10000); //settling time
 
             // Read tether bias voltage, current
-            println!("Measure voltage and input (in mV): ");
+            print!("Measure voltage and input (in mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            println!("");
 
             let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
             println!(
@@ -1350,7 +1351,7 @@ impl ManualPerformanceTests {
                 payload.get_tether_bias_voltage_millivolts()
             );
             voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
-            // println!("");
+            println!("");
         }
 
         // Set back to zero
@@ -1514,13 +1515,8 @@ impl ManualPerformanceTests {
         'a,
         const DONTCARE1: PayloadState,
         const DONTCARE2: HeaterState,
-        USCI: SerialUsci,
     >(
         payload: &'a mut Payload<DONTCARE1, DONTCARE2>,
-        p_pins: &'a mut PinpullerActivationPins,
-        spi_bus: &'a mut PayloadSPIController,
-        serial_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         let mut current_accuracy: Fxd = Fxd::ZERO;
         let mut expected_current_ma: i16;
@@ -1535,7 +1531,7 @@ impl ManualPerformanceTests {
         let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms
 
         // Select burn wire 1 to form current loop.
-        p_pins.burn_wire_2.set_high().ok();
+        payload.pinpuller_pins.burn_wire_2.set_high().ok();
 
         // Loop over 10 voltages (in mV: 400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300)
         for (i, set_voltage) in voltage_values_mv.iter().enumerate() {
@@ -1544,14 +1540,14 @@ impl ManualPerformanceTests {
                 "Set voltage on power supply to {} mV. Once set, press any key to continue",
                 set_voltage
             );
-            wait_for_any_packet(serial_reader);
+            wait_for_any_packet(&mut payload.serial_reader);
 
             // Obtain expected (I = V/R) and measured current in mA
             expected_current_ma = ((set_voltage * 1000) / total_resistance) as i16;
             measured_current_ma = payload.get_pinpuller_current_milliamps() as i16;
             // User inputs actual current from manual measurement
-            uwrite!(serial_writer, "Measure current and input (in mA): ").ok();
-            let actual_current_ma = read_num(serial_reader) as i16;
+            println!("Measure current and input (in mA): ");
+            let actual_current_ma = read_num(&mut payload.serial_reader) as i16;
 
             // Print results
             println!("Expected current is {} mA", expected_current_ma);

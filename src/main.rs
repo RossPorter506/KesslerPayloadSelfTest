@@ -85,13 +85,15 @@ use crate::{
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
-    let board = configure_board();
+    let mut board = configure_board();
 
     let mut board = board.into_enabled_payload();
+    let mut board = board.into_enabled_heater();
 
-    ManualPerformanceTests::test_cathode_offset_voltage(&mut board);
 
-    idle_loop(&mut board.led_pins);
+    ManualPerformanceTests::test_pinpuller_current(&mut board);
+
+    idle_loop(&mut board.led_pins)
 }
 
 /// Take and configure MCU peripherals
