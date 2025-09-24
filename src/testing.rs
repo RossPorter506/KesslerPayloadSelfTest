@@ -1363,14 +1363,11 @@ impl ManualPerformanceTests {
         voltage_result
     }
 
-    pub fn test_tether_bias_current<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
+    pub fn test_tether_bias_current<'a, const DONTCARE: HeaterState>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        spi_bus: &'a mut PayloadSPIController,
-        debug_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
+        const TEST_RESISTANCE: u32 = 98_000;
         let mut current_accuracy: Fxd = Fxd::ZERO;
 
         payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
@@ -1386,25 +1383,23 @@ impl ManualPerformanceTests {
             let expected_current_ua: i16 = ((1000 * expected_voltage_mv)
                 / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS))
                 as i16;
-            dbg_println!("Expected current is: {}mA", expected_current_ua);
-
+            println!("Expected current is: {}uA", expected_current_ua);
+            
             //Manually measure the current
-            uwrite!(debug_writer, "Measure current and input (in uA): ").ok();
-            let actual_current_ua = read_num(serial_reader);
-            uwriteln!(debug_writer, "").ok();
-
+            print!("Measure current and input (in uA): ");
+            let actual_current_ua = read_num(&mut payload.serial_reader);
+            println!("");
+            
             // Measure current
             let measured_current_ua: i32 = payload.get_tether_bias_current_microamps();
-            dbg_println!("Measured current is: {}uA", measured_current_ua);
+            println!("Measured current is: {}uA", measured_current_ua);
 
             //Determine accuracy
             let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
-            uwriteln!(
-                debug_writer,
+            println!(
                 "Calculated current millirpd: {}",
                 (current_rpd * 1000).to_num::<i32>()
-            )
-            .ok();
+            );
             current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
         }
 
@@ -1455,11 +1450,8 @@ impl ManualPerformanceTests {
         voltage_result
     }
 
-    pub fn test_heater_current<'a, USCI: SerialUsci>(
+    pub fn test_heater_current<'a>(
         payload: &'a mut Payload<{ PayloadOn }, { HeaterOn }>,
-        spi_bus: &'a mut PayloadSPIController,
-        debug_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
 
@@ -1473,7 +1465,7 @@ impl ManualPerformanceTests {
 
             // Set heater voltage
             payload.set_heater_voltage(output_voltage_mv);
-            uwriteln!(debug_writer, "Set voltage to: {}mV", output_voltage_mv).ok();
+            println!("Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
 
             // Calculate expected voltage and current (only for reference)
@@ -1482,25 +1474,23 @@ impl ManualPerformanceTests {
                 / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as u32))
                 .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num())
                 as i16;
-            dbg_println!("Expected current is: {}mA", expected_current_ma);
+            println!("Expected current is: {}mA", expected_current_ma);
 
             // Measure current
             let measured_current_ma: i16 = payload.get_heater_current_milliamps();
-            dbg_println!("Measured current is: {}mA", measured_current_ma);
+            println!("Measured current is: {}mA", measured_current_ma);
 
             //Manually measure the current
-            uwrite!(debug_writer, "Measure current and input (in mA): ").ok();
-            let actual_current_ma = read_num(serial_reader);
-            uwriteln!(debug_writer, "").ok();
+            println!("Measure current and input (in mA): ");
+            let actual_current_ma = read_num(&mut payload.serial_reader);
+            println!("");
 
             //Determine accuracy
             let current_rpd = calculate_rpd(measured_current_ma as i32, actual_current_ma);
-            uwriteln!(
-                debug_writer,
+            println!(
                 "Calculated current millirpd: {}",
                 (current_rpd * 1000).to_num::<i32>()
-            )
-            .ok();
+            );
             current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
         }
 

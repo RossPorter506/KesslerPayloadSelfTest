@@ -91,7 +91,7 @@ fn main() -> ! {
     let mut board = board.into_enabled_heater();
 
 
-    ManualPerformanceTests::test_pinpuller_current(&mut board);
+    ManualPerformanceTests::test_tether_bias_current(&mut board);
 
     idle_loop(&mut board.led_pins)
 }

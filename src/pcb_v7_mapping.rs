@@ -225,11 +225,39 @@ pub mod sensor_equations {
         return offical_equation;
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
-        (((v_adc_millivolts * 9) / 50) - 3) as i16
+        let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
+
+        #[cfg(feature = "7A")]
+        return ((offical_equation * 935)/ 1000 + 11) as i16;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation as i16;
+        
+        #[cfg(feature = "7C")]
+        return offical_equation as i16;
+
+        #[cfg(feature = "7D")]
+        return offical_equation as i16;
+
     }
     pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32 {
         // Output in MICROamps
-        ((1011 - v_adc_millivolts as i32) * 50_750) / 10_239
+        let offical_equation = ((1011 - v_adc_millivolts as i32) * 50_750) / 10_239;
+
+        #[cfg(feature = "7A")]
+        // return ((offical_equation * 961) / 1000) + 80;
+        return ((offical_equation * 962) / 1000) + 114;
+
+
+        #[cfg(feature = "7B")]
+        return offical_equation;
+
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
+
     }
     pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32 {
         // output in MICROamps
