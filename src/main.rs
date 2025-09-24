@@ -91,7 +91,7 @@ fn main() -> ! {
     let mut board = board.into_enabled_heater();
 
 
-    ManualPerformanceTests::test_pinpuller_current(&mut board);
+    ManualPerformanceTests::test_repeller_voltage(&mut board);
 
     idle_loop(&mut board.led_pins)
 }
@@ -100,7 +100,7 @@ fn main() -> ! {
 fn configure_board() -> Payload<{ PayloadOff }, { HeaterOff }> {
     let Some(regs) = msp430fr2355::Peripherals::take() else {
         loop {}
-    };
+    }; 
     let _wdt = Wdt::constrain(regs.WDT_A);
 
     let (
