@@ -1268,11 +1268,65 @@ impl ManualPerformanceTests {
         voltage_result
     }
 
-    pub fn test_cathode_offset_current<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
+    pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        spi_bus: &'a mut PayloadSPIController,
-        debug_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,
+        // spi_bus: &'a mut PayloadSPIController,
+        // debug_writer: &mut SerialWriter<USCI>,
+        // serial_reader: &mut Rx<USCI>,
+    ) -> PerformanceResult<'a> {
+        const NUM_MEASUREMENTS: usize = 10;
+        const TEST_RESISTANCE: u32 = 100_000;
+        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+
+        // payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
+        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+            let output_voltage_mv: u32 = ((100 - output_percentage)
+                * (REPELLER_MIN_VOLTAGE_MILLIVOLTS)
+                + output_percentage * (REPELLER_MAX_VOLTAGE_MILLIVOLTS))
+                / 100;
+            println!(
+                "Target output voltage: {}mV",
+                output_voltage_mv
+            );
+
+            // Set cathode voltage
+            // payload. (output_voltage_mv);
+
+            delay_cycles(10000); //settling time
+
+            // Read cathode voltage, current
+            print!("Measure voltage and input (in mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            println!("");
+
+            println!(
+                "Cathode offset mv: {}",
+                payload.get_cathode_offset_voltage_millivolts()
+            );
+
+            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
+            println!(
+                "Calculated voltage millirpd: {}",
+                (voltage_rpd * 1000).to_num::<i32>()
+            );
+
+            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
+        }
+
+        // Set back to zero
+        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS);
+        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+
+        let voltage_result =
+            calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
+        voltage_result
+    }
+
+    pub fn test_cathode_offset_current<'a, const DONTCARE: HeaterState>(
+        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
+        // spi_bus: &'a mut PayloadSPIController,
+        // debug_writer: &mut SerialWriter<USCI>,
+        // serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
@@ -1289,25 +1343,23 @@ impl ManualPerformanceTests {
             let expected_current_ua: i16 = ((1000 * expected_voltage_mv)
                 / (hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS + CATHODE_SENSE_RESISTANCE_OHMS))
                 as i16;
-            dbg_println!("Expected current is: {}mA", expected_current_ua);
+            println!("Expected current is: {}mA", expected_current_ua);
 
             //Manually measure the current
-            uwrite!(debug_writer, "Measure current and input (in uA): ").ok();
-            let actual_current_ua = read_num(serial_reader);
-            uwriteln!(debug_writer, "").ok();
+            print!("Measure current and input (in uA): ");
+            let actual_current_ua = read_num(&mut payload.serial_reader);
+            println!("");
 
             // Measure current
             let measured_current_ua: i32 = payload.get_cathode_offset_current_microamps();
-            dbg_println!("Measured current is: {}uA", measured_current_ua);
+            println!("Measured current is: {}uA", measured_current_ua);
 
             //Determine accuracy
             let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
-            uwriteln!(
-                debug_writer,
+            println!(
                 "Calculated current millirpd: {}",
                 (current_rpd * 1000).to_num::<i32>()
-            )
-            .ok();
+            );
             current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
         }
 

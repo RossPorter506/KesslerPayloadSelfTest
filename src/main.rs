@@ -90,6 +90,7 @@ fn main() -> ! {
     let mut board = board.into_enabled_payload();
     let mut board = board.into_enabled_heater();
 
+    ManualPerformanceTests::test_cathode_offset_current(&mut board);
 
     ManualPerformanceTests::test_tether_bias_current(&mut board);
 
@@ -100,7 +101,7 @@ fn main() -> ! {
 fn configure_board() -> Payload<{ PayloadOff }, { HeaterOff }> {
     let Some(regs) = msp430fr2355::Peripherals::take() else {
         loop {}
-    };
+    }; 
     let _wdt = Wdt::constrain(regs.WDT_A);
 
     let (
