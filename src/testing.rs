@@ -1290,7 +1290,7 @@ impl ManualPerformanceTests {
             );
 
             // Set cathode voltage
-            payload.set_repe(output_voltage_mv);
+            // payload. (output_voltage_mv);
 
             delay_cycles(10000); //settling time
 
@@ -1322,11 +1322,11 @@ impl ManualPerformanceTests {
         voltage_result
     }
 
-    pub fn test_cathode_offset_current<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
+    pub fn test_cathode_offset_current<'a, const DONTCARE: HeaterState>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        spi_bus: &'a mut PayloadSPIController,
-        debug_writer: &mut SerialWriter<USCI>,
-        serial_reader: &mut Rx<USCI>,
+        // spi_bus: &'a mut PayloadSPIController,
+        // debug_writer: &mut SerialWriter<USCI>,
+        // serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
         const TEST_RESISTANCE: u32 = 100_000;
@@ -1343,25 +1343,23 @@ impl ManualPerformanceTests {
             let expected_current_ua: i16 = ((1000 * expected_voltage_mv)
                 / (hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS + CATHODE_SENSE_RESISTANCE_OHMS))
                 as i16;
-            dbg_println!("Expected current is: {}mA", expected_current_ua);
+            println!("Expected current is: {}mA", expected_current_ua);
 
             //Manually measure the current
-            uwrite!(debug_writer, "Measure current and input (in uA): ").ok();
-            let actual_current_ua = read_num(serial_reader);
-            uwriteln!(debug_writer, "").ok();
+            print!("Measure current and input (in uA): ");
+            let actual_current_ua = read_num(&mut payload.serial_reader);
+            println!("");
 
             // Measure current
             let measured_current_ua: i32 = payload.get_cathode_offset_current_microamps();
-            dbg_println!("Measured current is: {}uA", measured_current_ua);
+            println!("Measured current is: {}uA", measured_current_ua);
 
             //Determine accuracy
             let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
-            uwriteln!(
-                debug_writer,
+            println!(
                 "Calculated current millirpd: {}",
                 (current_rpd * 1000).to_num::<i32>()
-            )
-            .ok();
+            );
             current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
         }
 

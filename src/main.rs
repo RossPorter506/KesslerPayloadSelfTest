@@ -90,8 +90,7 @@ fn main() -> ! {
     let mut board = board.into_enabled_payload();
     let mut board = board.into_enabled_heater();
 
-
-    ManualPerformanceTests::test_repeller_voltage(&mut board);
+    ManualPerformanceTests::test_cathode_offset_current(&mut board);
 
     idle_loop(&mut board.led_pins)
 }
