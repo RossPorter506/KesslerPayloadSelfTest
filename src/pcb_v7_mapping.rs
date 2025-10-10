@@ -264,7 +264,21 @@ pub mod sensor_equations {
     }
     pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32 {
         // output in MICROamps
-        ((2576 - v_adc_millivolts as i32) * 883) / 500
+        let original_equation: i32 = ((2576 - v_adc_millivolts as i32) * 883) / 500;
+
+         #[cfg(feature = "7A")]
+        return ((original_equation * 1036) / 1000) + 43;
+        //return original_equation;
+
+
+        #[cfg(feature = "7B")]
+        return original_equation;
+
+        #[cfg(feature = "7C")]
+        return original_equation;
+
+        #[cfg(feature = "7D")]
+        return original_equation;
     }
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {

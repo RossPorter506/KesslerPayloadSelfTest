@@ -1329,15 +1329,18 @@ impl ManualPerformanceTests {
         // serial_reader: &mut Rx<USCI>,
     ) -> PerformanceResult<'a> {
         const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
+        const TEST_RESISTANCE: u32 = 99_440;
         let mut current_accuracy: Fxd = Fxd::ZERO;
 
         payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS))
                 / 100;
+
+            payload.set_cathode_offset_voltage(output_voltage_mv);
+
 
             let expected_voltage_mv: u32 = output_voltage_mv; // assume zero error between target voltage and actual voltage
             let expected_current_ua: i16 = ((1000 * expected_voltage_mv)

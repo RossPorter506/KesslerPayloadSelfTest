@@ -87,12 +87,13 @@ use crate::{
 fn main() -> ! {
     let mut board = configure_board();
 
+    println!("hello world");
+
     let mut board = board.into_enabled_payload();
     let mut board = board.into_enabled_heater();
 
-    ManualPerformanceTests::test_cathode_offset_current(&mut board);
-
-    ManualPerformanceTests::test_tether_bias_current(&mut board);
+    //ManualPerformanceTests::test_cathode_offset_current(&mut board);
+    //ManualPerformanceTests::test_tether_bias_current(&mut board);
 
     idle_loop(&mut board.led_pins)
 }
