@@ -1278,7 +1278,7 @@ impl ManualPerformanceTests {
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
-        // payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
+        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (REPELLER_MIN_VOLTAGE_MILLIVOLTS)
@@ -1289,19 +1289,19 @@ impl ManualPerformanceTests {
                 output_voltage_mv
             );
 
-            // Set cathode voltage
-            // payload. (output_voltage_mv);
+            // Set cathode offset voltage
+            payload.set_cathode_offset_voltage(output_voltage_mv);
 
             delay_cycles(10000); //settling time
 
-            // Read cathode voltage, current
+            // Read repeller voltage, current
             print!("Measure voltage and input (in mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
             println!("");
 
             println!(
-                "Cathode offset mv: {}",
-                payload.get_cathode_offset_voltage_millivolts()
+                "Repeller voltage mv: {}",
+                payload.get_repeller_voltage_millivolts()
             );
 
             let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
@@ -1318,7 +1318,7 @@ impl ManualPerformanceTests {
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
 
         let voltage_result =
-            calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
+            calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);
         voltage_result
     }
 
