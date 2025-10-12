@@ -1278,7 +1278,7 @@ impl ManualPerformanceTests {
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
-        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
+        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (REPELLER_MIN_VOLTAGE_MILLIVOLTS)
@@ -1290,7 +1290,7 @@ impl ManualPerformanceTests {
             );
 
             // Set cathode offset voltage
-            payload.set_cathode_offset_voltage(output_voltage_mv);
+            payload.set_tether_bias_voltage(output_voltage_mv);
 
             delay_cycles(10000); //settling time
 
@@ -1314,8 +1314,8 @@ impl ManualPerformanceTests {
         }
 
         // Set back to zero
-        payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS);
-        payload.set_cathode_offset_switch(SwitchState::Disconnected);
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
+        payload.set_tether_bias_switch(SwitchState::Disconnected);
 
         let voltage_result =
             calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);
@@ -1570,7 +1570,7 @@ impl ManualPerformanceTests {
         let rp_sense: i32 = 82;
         let r122: i32 = 400;
         let probe_resistance: i32 = 10; // Measure resistance with multimeter
-        let wirewound_res: i32 = 1200; // Measure resistance with multimeter
+        let wirewound_res: i32 = 1230; // Measure resistance with multimeter
         let mosfets: i32 = 27 * 2;
         let wire_resistance: i32 = 100 + 130;
         let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms

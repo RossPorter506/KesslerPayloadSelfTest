@@ -195,7 +195,19 @@ pub mod sensor_equations {
         compile_error!("Not yet calibrated");
     }
     pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        (2755 - v_adc_millivolts as i32) * 102
+        let original_equation = (2755 - v_adc_millivolts as i32) * 102;
+
+        #[cfg(feature = "7A")]
+        return (original_equation * 99) / 100 + 7100;
+        
+        #[cfg(feature = "7B")]
+        return original_equation;
+
+        #[cfg(feature = "7C")]
+        return original_equation;
+
+        #[cfg(feature = "7D")]
+        return original_equation;
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
         let offical_equation = ((v_adc_millivolts as i32 * 10891) / 100) + 3708;
@@ -288,7 +300,19 @@ pub mod sensor_equations {
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // 832/625 offset added to tune pinpuller
-        ((v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625)) as u16
+        let original_equation = ((v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625));
+
+        #[cfg(feature = "7A")]
+        return (((original_equation * 680) / 1000) + 123) as u16;
+
+        #[cfg(feature = "7B")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7C")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7D")]
+        return original_equation as u16;
     }
 
     //Returns temperature in Kelvin
