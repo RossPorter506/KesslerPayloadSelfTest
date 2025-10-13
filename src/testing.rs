@@ -745,6 +745,40 @@ impl AutomatedPerformanceTests {
         calculate_performance_result("Pinpuller current sense", accuracy, 5, 20)
     }
 
+    // Apeture Current
+    pub fn apeture_current_test<
+        'a,
+        const DONTCARE1: PayloadState,
+        const DONTCARE2: HeaterState,
+        USCI: SerialUsci,
+    >(
+        payload: &mut Payload<DONTCARE1, DONTCARE2>,
+        serial_reader: &mut Rx<USCI>,
+    ){
+        println!("Running Apeture Current Test");
+
+        // Any amount of cycles will work
+        for cycles in 1..200 {
+
+            // Wait for user to press something
+            wait_for_any_packet(&mut payload.serial_reader);
+            delay_cycles(1_000_000);
+
+            // Print measured uA
+            let measured_aperture_adc_mv = payload
+                .aperture_adc
+                .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
+            let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);
+
+            println!(
+                "Measured aperture current: {}uA",
+                measured_aperture_current_ua
+            );
+
+            // Put this against calculated theoretical uA
+        }
+    }
+
     // Connect repeller plate to HVDC tether supply (Pin 3 of S1_TBS) to cover a range of 25-250V
     pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
