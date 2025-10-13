@@ -15,6 +15,7 @@ use crate::pcb_mapping::{
     sensor_locations::*, *,
 };
 use crate::serial::{read_num, wait_for_any_packet, Printable, SerialWriter, TextColours::*};
+use crate::tvac::measure_aperture_current;
 #[allow(unused_imports)]
 use crate::{
     adc::*,
@@ -745,40 +746,6 @@ impl AutomatedPerformanceTests {
         calculate_performance_result("Pinpuller current sense", accuracy, 5, 20)
     }
 
-    // Apeture Current
-    pub fn apeture_current_test<
-        'a,
-        const DONTCARE1: PayloadState,
-        const DONTCARE2: HeaterState,
-        USCI: SerialUsci,
-    >(
-        payload: &mut Payload<DONTCARE1, DONTCARE2>,
-        serial_reader: &mut Rx<USCI>,
-    ){
-        println!("Running Apeture Current Test");
-
-        // Any amount of cycles will work
-        for cycles in 1..200 {
-
-            // Wait for user to press something
-            wait_for_any_packet(&mut payload.serial_reader);
-            delay_cycles(1_000_000);
-
-            // Print measured uA
-            let measured_aperture_adc_mv = payload
-                .aperture_adc
-                .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
-            let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);
-
-            println!(
-                "Measured aperture current: {}uA",
-                measured_aperture_current_ua
-            );
-
-            // Put this against calculated theoretical uA
-        }
-    }
-
     // Connect repeller plate to HVDC tether supply (Pin 3 of S1_TBS) to cover a range of 25-250V
     pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState, USCI: SerialUsci>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
@@ -1301,6 +1268,74 @@ impl ManualPerformanceTests {
             calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
         voltage_result
     }
+    
+     // Apeture Current
+    pub fn apeture_current_test<
+        'a,
+        const DONTCARE1: PayloadState,
+        const DONTCARE2: HeaterState
+    >(
+        payload: &mut Payload<DONTCARE1, DONTCARE2>
+    ){
+        println!("Running Apeture Current Test");
+
+        let probe_resitance: u32 = 989; // Update based on measrement of resistor used
+        
+        let sense_resistance: u32 = 1;
+        let max_current_ma: u32 = 5;
+
+        let max_voltage_mv: u32 = (max_current_ma*(probe_resitance+sense_resistance));
+
+        payload.aperture_adc.cs_pin.set_low().ok();
+        crate::delay_cycles(5_000); // 5ms
+
+        payload
+                .aperture_adc
+                .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
+            
+        payload.aperture_adc.cs_pin.set_high().ok();
+        crate::delay_cycles(5_000); // 5ms
+
+
+        // Any amount of cycles will work
+        for power_supply_voltage in (0..max_voltage_mv).step_by((max_voltage_mv/10) as usize) {
+
+            println!("Power supply: {} mV", power_supply_voltage);
+
+            // Wait for user to press something
+            wait_for_any_packet(&mut payload.serial_reader);
+
+            // The aperture CS pin also controls whether the aperture ADC and circuitry are powered.
+            // They should be powered for at least 5ms before a value is requested.
+            payload.aperture_adc.cs_pin.set_low().ok();
+            crate::delay_cycles(5_000); // 5ms
+
+
+            // Print measured uA
+            let measured_aperture_adc_mv = payload
+                .aperture_adc
+                .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
+            
+            println!("Raw ADC Value {}", measured_aperture_adc_mv);
+
+            let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);
+
+            println!(
+                "Measured aperture current: {}uA",
+                measured_aperture_current_ua
+            );
+
+            println!("Expected Current: {} uA", (power_supply_voltage*1000)/(probe_resitance+sense_resistance));
+
+            println!("");
+
+            payload.aperture_adc.cs_pin.set_high().ok();
+            crate::delay_cycles(5_000); // 5ms
+            // Put this against calculated theoretical uA
+        }
+    }
+
+
 
     pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState>(
         payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,

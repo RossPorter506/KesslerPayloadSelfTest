@@ -295,7 +295,20 @@ pub mod sensor_equations {
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // TODO: Does this need to be updated?
-        (((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10) as u16
+        let original_equation = (((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10);
+        
+         #[cfg(feature = "7A")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7B")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7C")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7D")]
+        return original_equation as u16;
+
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {

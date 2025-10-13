@@ -94,8 +94,9 @@ fn main() -> ! {
 
     //ManualPerformanceTests::test_cathode_offset_current(&mut board);
     //ManualPerformanceTests::test_tether_bias_current(&mut board);
-    ManualPerformanceTests::test_repeller_voltage(&mut board);
+    //ManualPerformanceTests::test_repeller_voltage(&mut board);
     //ManualPerformanceTests::test_pinpuller_current(&mut board);
+    ManualPerformanceTests::apeture_current_test(&mut board);
 
     idle_loop(&mut board.led_pins)
 }
