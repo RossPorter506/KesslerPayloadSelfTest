@@ -198,7 +198,9 @@ pub mod sensor_equations {
         let original_equation = (2755 - v_adc_millivolts as i32) * 102;
 
         #[cfg(feature = "7A")]
-        return (original_equation * 99) / 100 + 7100;
+        //return (original_equation * 99) / 100 + 7100;
+        // Was actually 285299.9
+        return 285300 - (v_adc_millivolts as i32) * 5049 / 50;
         
         #[cfg(feature = "7B")]
         return original_equation;
@@ -210,10 +212,13 @@ pub mod sensor_equations {
         return original_equation;
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        let offical_equation = ((v_adc_millivolts as i32 * 10891) / 100) + 3708;
+        let offical_equation = v_adc_millivolts as i32 * 101;
 
         #[cfg(feature = "7A")]
-        return ((offical_equation - 25668) * 951) / 1000 + 23645;
+        //return ((offical_equation - 25668) * 951) / 1000 + 23645;
+        // Offset of 2761.04 
+        //return ((v_adc_millivolts as i32 * 10357) / 100 + 69026) / 25;
+        return offical_equation;
         
         #[cfg(feature = "7B")]
         return offical_equation;
@@ -228,7 +233,8 @@ pub mod sensor_equations {
         let offical_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
 
         #[cfg(feature = "7A")]
-        return ((offical_equation - 25810) * 997)/ 1000 + 24886;
+        //return ((offical_equation - 25810) * 997)/ 1000 + 24886;
+        return (v_adc_millivolts as i32 * -8446) / 100 + 404024;
         
         #[cfg(feature = "7B")]
         return offical_equation;
@@ -295,7 +301,7 @@ pub mod sensor_equations {
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // TODO: Does this need to be updated?
-        let original_equation = (((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10);
+        let original_equation = ((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10;
         
          #[cfg(feature = "7A")]
         return original_equation as u16;
@@ -313,7 +319,7 @@ pub mod sensor_equations {
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // 832/625 offset added to tune pinpuller
-        let original_equation = ((v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625));
+        let original_equation = (v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625);
 
         #[cfg(feature = "7A")]
         return (((original_equation * 680) / 1000) + 123) as u16;

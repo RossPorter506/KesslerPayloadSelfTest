@@ -1451,6 +1451,12 @@ impl ManualPerformanceTests {
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
+        payload.set_tether_bias_voltage(0);
+        println!(
+                "Tether mv: {}",
+                payload.get_tether_bias_voltage_millivolts()
+        );
+
         payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
         for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
             let output_voltage_mv: u32 = ((100 - output_percentage)
