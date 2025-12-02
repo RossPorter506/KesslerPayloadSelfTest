@@ -215,10 +215,7 @@ pub mod sensor_equations {
         let offical_equation = v_adc_millivolts as i32 * 101;
 
         #[cfg(feature = "7A")]
-        //return ((offical_equation - 25668) * 951) / 1000 + 23645;
-        // Offset of 2761.04 
-        //return ((v_adc_millivolts as i32 * 10357) / 100 + 69026) / 25;
-        return offical_equation;
+        return (offical_equation * 105) / 100;
         
         #[cfg(feature = "7B")]
         return offical_equation;
@@ -390,7 +387,7 @@ pub mod power_supply_equations {
         ((resistance * 794) / R118_OHMS + 794 + 21) as u16
     }
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16 {
-        ((millivolts - 1215) * 100 / 5249) as u16
+        ((millivolts) * 100 / 5249) as u16
     }
     pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16 {
         //(millivolts / 51) as u16 // ideal

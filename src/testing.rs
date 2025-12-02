@@ -1451,7 +1451,10 @@ impl ManualPerformanceTests {
         const TEST_RESISTANCE: u32 = 100_000;
         let mut voltage_accuracy: Fxd = Fxd::ZERO;
 
-        payload.set_tether_bias_voltage(0);
+        payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
+        
+        println!("Wait for voltage to drain, then press any button");
+        wait_for_any_packet(&mut payload.serial_reader);
         println!(
                 "Tether mv: {}",
                 payload.get_tether_bias_voltage_millivolts()
