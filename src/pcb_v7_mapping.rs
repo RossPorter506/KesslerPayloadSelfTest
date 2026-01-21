@@ -65,6 +65,9 @@ pub mod power_supply_limits {
     pub const CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
     pub const CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
 
+    pub const REPELLER_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
+    pub const REPELLER_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
+
     pub const TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS: u32 = 250000;
     pub const TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS: u32 = 0;
 }
@@ -173,51 +176,159 @@ pub mod sensor_equations {
     use fixed::FixedI64;
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16 {
+        let offical_equation = (v_adc_millivolts as i32 * 1035) / 310;
+
         #[cfg(feature = "7A")]
-        compile_error!("Not yet calibrated");
+        return (((offical_equation - 841) * 959)/1000 + 821).max(0) as u16;
 
         #[cfg(feature = "7B")]
-        return (((((((((v_adc_millivolts as i32 * 1035) / 310) - 90) * 964) / 1000) + 75) * 979)
+        return (((((((offical_equation - 90) * 964) / 1000) + 75) * 979)
             / 1000)
             + 30)
             .max(0) as u16;
 
         #[cfg(feature = "7C")]
-        return ((((((v_adc_millivolts as i32 * 1035) / 310) - 90) * 964) / 1000) + 75).max(0)
+        return ((((offical_equation - 90) * 964) / 1000) + 75).max(0)
             as u16;
 
         #[cfg(feature = "7D")]
         compile_error!("Not yet calibrated");
     }
     pub fn repeller_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        (2755 - v_adc_millivolts as i32) * 102
+        let original_equation = (2755 - v_adc_millivolts as i32) * 102;
+
+        #[cfg(feature = "7A")]
+        //return (original_equation * 99) / 100 + 7100;
+        // Was actually 285299.9
+        return 285300 - (v_adc_millivolts as i32) * 5049 / 50;
+        
+        #[cfg(feature = "7B")]
+        return original_equation;
+
+        #[cfg(feature = "7C")]
+        return original_equation;
+
+        #[cfg(feature = "7D")]
+        return original_equation;
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        ((v_adc_millivolts as i32 * 10891) / 100) + 3708
+        let offical_equation = v_adc_millivolts as i32 * 101;
+
+        #[cfg(feature = "7A")]
+        return (offical_equation * 105) / 100;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation;
+
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        ((v_adc_millivolts as i32) * -84714 / 1000) + 406089
+        let offical_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
+
+        #[cfg(feature = "7A")]
+        //return ((offical_equation - 25810) * 997)/ 1000 + 24886;
+        return (v_adc_millivolts as i32 * -8446) / 100 + 404024;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation;
+        
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
-        (((v_adc_millivolts * 9) / 50) - 3) as i16
+        let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
+
+        #[cfg(feature = "7A")]
+        return ((offical_equation * 935)/ 1000 + 11) as i16;
+        
+        #[cfg(feature = "7B")]
+        return offical_equation as i16;
+        
+        #[cfg(feature = "7C")]
+        return offical_equation as i16;
+
+        #[cfg(feature = "7D")]
+        return offical_equation as i16;
+
     }
     pub fn tether_bias_current_eq(v_adc_millivolts: u16) -> i32 {
         // Output in MICROamps
-        ((1011 - v_adc_millivolts as i32) * 50_750) / 10_239
+        let offical_equation = ((1011 - v_adc_millivolts as i32) * 50_750) / 10_239;
+
+        #[cfg(feature = "7A")]
+        // return ((offical_equation * 961) / 1000) + 80;
+        return ((offical_equation * 962) / 1000) + 114;
+
+
+        #[cfg(feature = "7B")]
+        return offical_equation;
+
+        #[cfg(feature = "7C")]
+        return offical_equation;
+
+        #[cfg(feature = "7D")]
+        return offical_equation;
+
     }
     pub fn cathode_offset_current_eq(v_adc_millivolts: u16) -> i32 {
         // output in MICROamps
-        ((2576 - v_adc_millivolts as i32) * 883) / 500
+        let original_equation: i32 = ((2576 - v_adc_millivolts as i32) * 883) / 500;
+
+         #[cfg(feature = "7A")]
+        return ((original_equation * 1036) / 1000) + 43;
+        //return original_equation;
+
+
+        #[cfg(feature = "7B")]
+        return original_equation;
+
+        #[cfg(feature = "7C")]
+        return original_equation;
+
+        #[cfg(feature = "7D")]
+        return original_equation;
     }
 
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // TODO: Does this need to be updated?
-        (((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10) as u16
+        let original_equation = ((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10;
+        
+         #[cfg(feature = "7A")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7B")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7C")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7D")]
+        return original_equation as u16;
+
     }
 
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // 832/625 offset added to tune pinpuller
-        ((v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625)) as u16
+        let original_equation = (v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625);
+
+        #[cfg(feature = "7A")]
+        return (((original_equation * 680) / 1000) + 123) as u16;
+
+        #[cfg(feature = "7B")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7C")]
+        return original_equation as u16;
+
+        #[cfg(feature = "7D")]
+        return original_equation as u16;
     }
 
     //Returns temperature in Kelvin
@@ -276,7 +387,7 @@ pub mod power_supply_equations {
         ((resistance * 794) / R118_OHMS + 794 + 21) as u16
     }
     pub fn tether_bias_target_voltage_to_dac_voltage(millivolts: u32) -> u16 {
-        ((millivolts - 1215) * 100 / 5249) as u16
+        ((millivolts) * 100 / 5249) as u16
     }
     pub fn cathode_offset_target_voltage_to_dac_voltage(millivolts: u32) -> u16 {
         //(millivolts / 51) as u16 // ideal

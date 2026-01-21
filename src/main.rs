@@ -85,20 +85,27 @@ use crate::{
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
-    let board = configure_board();
+    let mut board = configure_board();
+
+    println!("hello world");
 
     let mut board = board.into_enabled_payload();
+    let mut board = board.into_enabled_heater();
 
-    ManualPerformanceTests::test_cathode_offset_voltage(&mut board);
+    //ManualPerformanceTests::test_cathode_offset_current(&mut board);
+    ManualPerformanceTests::test_tether_bias_voltage(&mut board);
+    //ManualPerformanceTests::test_repeller_voltage(&mut board);
+    //ManualPerformanceTests::test_pinpuller_current(&mut board);
+    //ManualPerformanceTests::apeture_current_test(&mut board);
 
-    idle_loop(&mut board.led_pins);
+    idle_loop(&mut board.led_pins)
 }
 
 /// Take and configure MCU peripherals
 fn configure_board() -> Payload<{ PayloadOff }, { HeaterOff }> {
     let Some(regs) = msp430fr2355::Peripherals::take() else {
         loop {}
-    };
+    }; 
     let _wdt = Wdt::constrain(regs.WDT_A);
 
     let (
