@@ -173,7 +173,7 @@ pub mod power_supply_locations {
 /* Sensor equations. Takes in the voltage reported at the ADC (in millivolts) and produces the voltage/current being sensed in millivolts/milliamps */
 
 pub mod sensor_equations {
-    use fixed::FixedI64;
+    use fixed::{FixedI64, types::extra::U32};
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16 {
         let offical_equation = (v_adc_millivolts as i32 * 1035) / 310;
@@ -340,35 +340,32 @@ pub mod sensor_equations {
     }
     fn generic_temperature_eq(v_adc_millivolts: u16, vcc: u16) -> u16 {
         // ln(R_t) = ln( 10_000 * adc_voltage / (vcc - adc_voltage) )
-        let ln_resistance = (10_000 * FixedI64::<32>::from(v_adc_millivolts))
-            .checked_div((vcc - v_adc_millivolts).into())
+        let ln_resistance = (10_000*FixedI64::<U32>::from(v_adc_millivolts))
+            .checked_div( (vcc - v_adc_millivolts).into() )
             .and_then(checked_ln)
             .unwrap_or(FixedI64::ZERO);
 
         // 1,028,000 / (705 + 298*ln(R_t))
-        FixedI64::<32>::from(1_028_000)
-            .checked_div(FixedI64::<32>::from(705) + 298 * ln_resistance)
+        FixedI64::<U32>::from(1_028_000)
+            .checked_div(FixedI64::<U32>::from(705) + 298*ln_resistance)
             .map(|t| t.saturating_to_num())
             .unwrap_or(0)
     }
     // Cheap first order natural log approximation. Good to maybe 2dp.
     // Can improve by replacing 2t with  2(t+t^3/3+t^5/5+...)
-    fn checked_ln(n: FixedI64<32>) -> Option<FixedI64<32>> {
-        if n <= 0 {
-            return None;
-        }
-
+    fn checked_ln(n: FixedI64::<U32>) -> Option<FixedI64::<U32>> {
+        if n <= 0 {return None}
+        
         // Normalise n between 1 and 2
         let count: i64 = n.checked_int_log2()?.into();
         let norm_n = if count > 0 { n >> count } else { n << -count };
 
         // t = (n-1) / (n+1)
-        let t: FixedI64<32> = (norm_n - FixedI64::<32>::ONE)
-            .checked_div(norm_n + FixedI64::<32>::ONE)?
-            .to_num();
-
+        let t: FixedI64::<U32> = (norm_n - FixedI64::<U32>::ONE)
+            .checked_div(norm_n + FixedI64::<U32>::ONE)?.to_num();
+        
         // ln(n) = count*ln(2) + 2t
-        Some(count * FixedI64::<32>::LN_2 + 2 * t)
+        Some(count*FixedI64::<U32>::LN_2 + 2*t)
     }
 }
 

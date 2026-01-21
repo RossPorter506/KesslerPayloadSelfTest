@@ -2,6 +2,7 @@ use core::cell::{RefCell, UnsafeCell};
 
 use critical_section::Mutex;
 use embedded_hal::serial::{Write, Read};
+use fixed::{traits::Fixed, types::extra::{LeEqU64, Unsigned}};
 use msp430fr2355::E_USCI_A1;
 use msp430fr2x5x_hal::serial::{SerialUsci, Tx, Rx};
 use ufmt::{uWrite, uwrite, uwriteln, uDisplay};
@@ -119,11 +120,11 @@ impl<USCI: SerialUsci> uWrite for SerialWriter<USCI>{
     Instead, we make a trait Printable which can be implemented on fixed numbers by calling x.to_prnt()
     This trait returns a newtype PrintableFixedI64 which can implement uDisplay, since it's defined inside this project
 */
-pub struct PrintableFixedI64<const N: i32>(fixed::FixedI64::<N>);
-impl<const N: i32> uDisplay for PrintableFixedI64<N> {
+pub struct PrintableFixedI64<N: Unsigned + LeEqU64>(fixed::FixedI64::<N>);
+impl<N: Unsigned + LeEqU64> uDisplay for PrintableFixedI64<N> {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where W: uWrite + ?Sized {
-        let frac_bits = fixed::FixedI64::<N>::FRAC_BITS;
+        let frac_bits = fixed::FixedI64::<N>::FRAC_NBITS;
         let frac_mask: u64 = (1 << frac_bits) - 1;
 
         let mut fxd = self.0;
@@ -152,10 +153,10 @@ impl<const N: i32> uDisplay for PrintableFixedI64<N> {
     }
 }
 
-pub trait Printable<const N: i32> {
+pub trait Printable<N: Unsigned + LeEqU64> {
     fn printable(&self) -> PrintableFixedI64<N>;
 }
-impl<const N: i32> Printable<N> for fixed::FixedI64::<N> {
+impl<N: Unsigned + LeEqU64> Printable<N> for fixed::FixedI64::<N> {
     fn printable(&self) -> PrintableFixedI64<N> {
         PrintableFixedI64::<N>(*self)
     }

@@ -15,8 +15,8 @@ use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
 use crate::serial::{read_num, TextColours::*};
-use fixed::{self, FixedI64};
-type Fxd = FixedI64::<32>;
+use fixed::{self, FixedI64, types::extra::U32};
+type Fxd = FixedI64::<U32>;
 
 use crate::testing::{calculate_performance_result, calculate_rpd, in_place_average, hvdc_mock,heater_mock,pinpuller_mock, PerformanceResult};
 
