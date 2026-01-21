@@ -13,7 +13,7 @@ use crate::serial::{SerialWriter, wait_for_any_packet, Printable, read_num, Text
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use fixed::{self, FixedI64};
+use fixed::{self, FixedI64, types::extra::U32};
 
 // We use this type a lot. 
 /// 64 bits long, 32 fractional bits, signed. 
@@ -21,7 +21,7 @@ use fixed::{self, FixedI64};
 /// Range: -2,147,483,648 to 2,147,483,647. 
 /// 
 /// Delta: 2.3283064e-10 = 0.00000000023283064
-type Fxd = FixedI64::<32>;
+type Fxd = FixedI64::<U32>;
 
 /// Runs board diagnostics to check whether board functionality is working correctly
 pub fn self_test(payload: Payload<{PayloadOff}, {HeaterOff}>) -> Payload<{PayloadOff}, {HeaterOff}> {
@@ -273,7 +273,7 @@ const fn fixed_sqrt(x: Fxd) -> Fxd {
     // No for loops in const fn's yet.
     let mut iterations = 10;
     while iterations > 0 {
-        guess = (guess.unwrapped_add(x.unwrapped_div(guess))).unwrapped_div_int(2);
+        guess = (guess.strict_add(x.strict_div(guess))).strict_div_int(2);
         iterations -= 1;
     }
     return guess;
@@ -714,15 +714,15 @@ pub mod pinpuller_mock {
     const WIRE_RESISTANCE: Fxd = Fxd::lit("0.22");
     const CIRCUIT_RESISTANCE: Fxd = 
     WIRE_RESISTANCE
-        .unwrapped_add(SENSE_RESISTANCE)
-        .unwrapped_add(DIVIDER_RESISTANCE)
-        .unwrapped_add(PINPULLER_MOCK_RESISTANCE)
-        .unwrapped_add(MOSFET_R_ON_RESISTANCE)
-        .unwrapped_add(MOSFET_R_ON_RESISTANCE);
+        .strict_add(SENSE_RESISTANCE)
+        .strict_add(DIVIDER_RESISTANCE)
+        .strict_add(PINPULLER_MOCK_RESISTANCE)
+        .strict_add(MOSFET_R_ON_RESISTANCE)
+        .strict_add(MOSFET_R_ON_RESISTANCE);
     const NUM_PINS: usize = 4;
     pub const EXPECTED_ON_CURRENT: Fxd = 
         Fxd::const_from_int(PINPULLER_VOLTAGE_MILLIVOLTS as i64) 
-        .unwrapped_div(CIRCUIT_RESISTANCE);
+        .strict_div(CIRCUIT_RESISTANCE);
 }
 
 /// Values associated with mock heater tests
@@ -735,8 +735,8 @@ pub mod heater_mock {
     pub const CIRCUIT_AND_PROBE_RESISTANCE_MOHMS: u16 = CIRCUIT_RESISTANCE_MOHMS + PROBE_RESISTANCE_MOHMS;
     const HEATER_MAX_POWER_MWATTS: u16 = 1000; // TODO: Verify?
     
-    pub const POWER_LIMITED_MAX_CURRENT_MA: Fxd = fixed_sqrt( Fxd::const_from_int(HEATER_MAX_POWER_MWATTS as i64).unwrapped_div_int(CIRCUIT_RESISTANCE_MOHMS as i64))
-        .unwrapped_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
+    pub const POWER_LIMITED_MAX_CURRENT_MA: Fxd = fixed_sqrt( Fxd::const_from_int(HEATER_MAX_POWER_MWATTS as i64).strict_div_int(CIRCUIT_RESISTANCE_MOHMS as i64))
+        .strict_mul_int(1000); //sqrt(heater_max_power_mw / circuit_resistance_mohm) * 1000;
 }
 
 pub mod hvdc_mock {
