@@ -13,7 +13,7 @@ use crate::serial::{SerialWriter, wait_for_any_packet, Printable, read_num, Text
 use crate::{spi::{*, SckPolarity::*, SckPhase::SampleFirstEdge}, adc::*, digipot::*, dac::*};
 #[allow(unused_imports)]
 use crate::pcb_mapping::{pin_name_types::*, sensor_locations::*, power_supply_limits::*, power_supply_locations::*, peripheral_vcc_values::*, *};
-use fixed::{self, FixedI64};
+use fixed::{self, FixedI64, types::extra::U32};
 
 // We use this type a lot. 
 /// 64 bits long, 32 fractional bits, signed. 
@@ -21,7 +21,7 @@ use fixed::{self, FixedI64};
 /// Range: -2,147,483,648 to 2,147,483,647. 
 /// 
 /// Delta: 2.3283064e-10 = 0.00000000023283064
-type Fxd = FixedI64::<32>;
+type Fxd = FixedI64::<U32>;
 
 /// Runs board diagnostics to check whether board functionality is working correctly
 pub fn self_test(payload: Payload<{PayloadOff}, {HeaterOff}>) -> Payload<{PayloadOff}, {HeaterOff}> {
