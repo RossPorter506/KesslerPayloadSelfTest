@@ -1026,8 +1026,8 @@ pub mod heater_mock {
 }
 
 pub mod hvdc_mock {
-    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
-    pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
+    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_000;
+    pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 99_370;
 }
 
 fn test_temperature_sensors_against_known_temp<
@@ -1352,8 +1352,11 @@ impl ManualPerformanceTests {
                 as i32;
 
             print!("({}/{}) Target: {}uA. ", step, NUM_MEASUREMENTS, expected_current_ua);
-            print!("Measured (uA): ");
-            let actual_current_ua = read_num(&mut payload.serial_reader);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ua = (measured_voltage_mv * 1000)
+                / (hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS + CATHODE_SENSE_RESISTANCE_OHMS)
+                    as i32;
             let estimate_current_ua: i32 = payload.get_cathode_offset_current_microamps();
             println!("Estimate: {}", estimate_current_ua);
 
@@ -1421,8 +1424,11 @@ impl ManualPerformanceTests {
                 as i32;
 
             print!("({}/{}) Target: {}uA. ", step, NUM_MEASUREMENTS, expected_current_ua);
-            print!("Measured (uA): ");
-            let actual_current_ua = read_num(&mut payload.serial_reader);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ua = (measured_voltage_mv * 1000)
+                / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS)
+                    as i32;
             let estimate_current_ua: i32 = payload.get_tether_bias_current_microamps();
             println!("Estimate: {}", estimate_current_ua);
 
@@ -1482,8 +1488,10 @@ impl ManualPerformanceTests {
             let estimate_current_ma: i16 = payload.get_heater_current_milliamps();
 
             print!("({}/{}) Target: {}mA. ", step, NUM_MEASUREMENTS, expected_current_ma);
-            print!("Measured (mA): ");
-            let actual_current_ma = read_num(&mut payload.serial_reader);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ma = (measured_voltage_mv * 1000)
+                / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as i32);
             println!("Estimate: {}", estimate_current_ma);
 
             push_result(expected_current_ma as i32, estimate_current_ma as i32, actual_current_ma);
@@ -1520,8 +1528,9 @@ impl ManualPerformanceTests {
 
             let estimate_current_ma = payload.get_pinpuller_current_milliamps() as i32;
 
-            print!("Measured (mA): ");
-            let actual_current_ma = read_num(&mut payload.serial_reader);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ma = (measured_voltage_mv * 1000) / total_resistance;
             println!("Estimate: {}", estimate_current_ma);
 
             push_result(expected_current_ma, estimate_current_ma, actual_current_ma);

@@ -201,7 +201,7 @@ pub mod sensor_equations {
         return 285300 - (v_adc_millivolts as i32) * 5049 / 50;
         
         #[cfg(feature = "7B")]
-        return original_equation;
+        return original_equation + 8881; // ikik, always estimated 9v below true
 
         #[cfg(feature = "7C")]
         return original_equation;
@@ -210,35 +210,35 @@ pub mod sensor_equations {
         return original_equation;
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        let offical_equation = v_adc_millivolts as i32 * 101;
+        let original_equation = v_adc_millivolts as i32 * 101;
 
         #[cfg(feature = "7A")]
-        return (offical_equation * 105) / 100;
+        return (original_equation * 105) / 100;
         
         #[cfg(feature = "7B")]
-        return offical_equation;
+        return (original_equation * 1042) / 1000 + 557;
 
         #[cfg(feature = "7C")]
-        return offical_equation;
+        return original_equation;
 
         #[cfg(feature = "7D")]
-        return offical_equation;
+        return original_equation;
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        let offical_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
+        let original_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
 
         #[cfg(feature = "7A")]
         //return ((offical_equation - 25810) * 997)/ 1000 + 24886;
         return (v_adc_millivolts as i32 * -8446) / 100 + 404024;
         
         #[cfg(feature = "7B")]
-        return offical_equation;
+        return original_equation; // Pretty good already
         
         #[cfg(feature = "7C")]
-        return offical_equation;
+        return original_equation;
 
         #[cfg(feature = "7D")]
-        return offical_equation;
+        return original_equation;
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
         let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
@@ -285,7 +285,7 @@ pub mod sensor_equations {
 
 
         #[cfg(feature = "7B")]
-        return original_equation;
+        return (original_equation * 1053) / 1000 + 78;
 
         #[cfg(feature = "7C")]
         return original_equation;
