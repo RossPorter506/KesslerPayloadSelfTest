@@ -186,14 +186,14 @@ pub fn maybe_read_num<USCI: SerialUsci>(serial_reader: &mut Rx<USCI>) -> Option<
     let mut sign = 1;
     // First character needs to be treated differently since '-' makes a number negative when first, but is invalid in other places.
     match wait_for_any_packet(serial_reader) {
-        CARRIAGE_RETURN => return None,
+        CARRIAGE_RETURN | NEWLINE => return None,
         NEGATIVE_SIGN => sign = -1, // Make number negative afterwards
         n if is_ascii_number(n) => {num = (n - ASCII_ZERO) as i32},
         _ => return None,
     }
     loop{
         match wait_for_any_packet(serial_reader) {
-            CARRIAGE_RETURN => break,
+            CARRIAGE_RETURN | NEWLINE => break,
             n if is_ascii_number(n) => {num = num * 10 + (n - ASCII_ZERO) as i32},
             _ => return None,
         }
@@ -220,3 +220,4 @@ const ASCII_ZERO: u8 = b'0';
 const ASCII_NINE: u8 = b'9';
 const CARRIAGE_RETURN: u8 = b'\r'; 
 const NEGATIVE_SIGN: u8 = b'-';
+const NEWLINE: u8 = b'\n';

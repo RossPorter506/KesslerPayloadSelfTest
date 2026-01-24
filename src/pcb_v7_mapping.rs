@@ -176,19 +176,17 @@ pub mod sensor_equations {
     use fixed::{FixedI64, types::extra::U32};
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16 {
-        let offical_equation = (v_adc_millivolts as i32 * 1035) / 310;
+        let original_equation = (v_adc_millivolts as i32 * 1035) / 310;
 
         #[cfg(feature = "7A")]
-        return (((offical_equation - 841) * 959)/1000 + 821).max(0) as u16;
+        return (((original_equation - 841) * 959)/1000 + 821).max(0) as u16;
 
         #[cfg(feature = "7B")]
-        return (((((((offical_equation - 90) * 964) / 1000) + 75) * 979)
-            / 1000)
-            + 30)
+        return ((original_equation * 978) / 1000 - 3)
             .max(0) as u16;
 
         #[cfg(feature = "7C")]
-        return ((((offical_equation - 90) * 964) / 1000) + 75).max(0)
+        return ((((original_equation - 90) * 964) / 1000) + 75).max(0)
             as u16;
 
         #[cfg(feature = "7D")]
