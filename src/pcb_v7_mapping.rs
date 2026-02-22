@@ -247,7 +247,7 @@ pub mod sensor_equations {
         return ((offical_equation * 935)/ 1000 + 11) as i16;
         
         #[cfg(feature = "7B")]
-        return ((offical_equation * 949)/ 1000 + 18) as i16;
+        return offical_equation as i16;
         
         #[cfg(feature = "7C")]
         return offical_equation as i16;

@@ -1258,7 +1258,7 @@ impl ManualPerformanceTests {
         reset_results("uA");
         let mut step: u16 = 0;
 
-        let probe_resistance: u32 = 989;
+        let probe_resistance: u32 = 984;
         let sense_resistance: u32 = 1;
         let max_current_ma: u32 = 5;
         let max_voltage_mv: u32 = max_current_ma * (probe_resistance + sense_resistance);
@@ -1285,10 +1285,9 @@ impl ManualPerformanceTests {
                 .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
 
             let estimate_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv) as i32;
-
+            println!("Estimate: {}", estimate_current_ua);
             print!("Measured (uA): ");
             let actual_current_ua = read_num(&mut payload.serial_reader);
-            println!("Estimate: {}", estimate_current_ua);
 
             push_result(expected_current_ua, estimate_current_ua, actual_current_ua);
 
@@ -1488,11 +1487,12 @@ impl ManualPerformanceTests {
             let estimate_current_ma: i16 = payload.get_heater_current_milliamps();
 
             print!("({}/{}) Target: {}mA. ", step, NUM_MEASUREMENTS, expected_current_ma);
+            println!("Estimate: {}", estimate_current_ma);
+
             print!("Measured (mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
             let actual_current_ma = (measured_voltage_mv * 1000)
                 / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as i32);
-            println!("Estimate: {}", estimate_current_ma);
 
             push_result(expected_current_ma as i32, estimate_current_ma as i32, actual_current_ma);
         }
@@ -1527,11 +1527,11 @@ impl ManualPerformanceTests {
             wait_for_any_packet(&mut payload.serial_reader);
 
             let estimate_current_ma = payload.get_pinpuller_current_milliamps() as i32;
-
+            println!("Estimate: {}", estimate_current_ma);
+            
             print!("Measured (mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
             let actual_current_ma = (measured_voltage_mv * 1000) / total_resistance;
-            println!("Estimate: {}", estimate_current_ma);
 
             push_result(expected_current_ma, estimate_current_ma, actual_current_ma);
         }
