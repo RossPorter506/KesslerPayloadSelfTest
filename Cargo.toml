@@ -10,6 +10,10 @@ keywords = ["no-std", "msp430", "ti", "launchpad", "embedded-hal"]
 
 [features]
 debug_print = []
+7A = []
+7B = []
+7C = []
+7D = []
 
 [dependencies]
 nb = "0.1.3"
