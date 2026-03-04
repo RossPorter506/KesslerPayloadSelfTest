@@ -9,7 +9,7 @@ use msp430fr2x5x_hal::timer::Timer;
 
 use crate::digipot::Digipot; 
 use crate::adc::{ApertureADC, MiscADC, TemperatureADC, TemperatureSensor, TetherADC, VccType};
-use crate::dac::{DAC, DACCommand};
+use crate::dac::{self, DACCommand, DAC};
 use crate::pcb_common::{DeploySensePins, LEDPins, PinpullerActivationPins, TetherLMSPins};
 use crate::spi::{PayloadSPI, PayloadSPIController, SckPolarity::IdleLow, SckPolarity::IdleHigh, SckPhase::SampleFirstEdge};
 use crate::pcb_mapping::{sensor_equations::*, sensor_locations::*, power_supply_locations::*, power_supply_limits::*, power_supply_equations::*, PayloadControlPins, PayloadPeripherals};
