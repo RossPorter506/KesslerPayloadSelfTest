@@ -320,7 +320,7 @@ pub mod sensor_equations {
         return (((original_equation * 680) / 1000) + 123) as u16;
 
         #[cfg(feature = "7B")]
-        return original_equation as u16;
+        return (((((original_equation * 5235) / 10000) + 75) * 1029) / 1000) as u16;
 
         #[cfg(feature = "7C")]
         return original_equation as u16;
