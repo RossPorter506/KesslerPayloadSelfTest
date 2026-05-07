@@ -176,19 +176,17 @@ pub mod sensor_equations {
     use fixed::{FixedI64, types::extra::U32};
 
     pub fn heater_voltage_eq(v_adc_millivolts: u16) -> u16 {
-        let offical_equation = (v_adc_millivolts as i32 * 1035) / 310;
+        let original_equation = (v_adc_millivolts as i32 * 1035) / 310;
 
         #[cfg(feature = "7A")]
-        return (((offical_equation - 841) * 959)/1000 + 821).max(0) as u16;
+        return (((original_equation - 841) * 959)/1000 + 821).max(0) as u16;
 
         #[cfg(feature = "7B")]
-        return (((((((offical_equation - 90) * 964) / 1000) + 75) * 979)
-            / 1000)
-            + 30)
+        return ((original_equation * 978) / 1000 - 3)
             .max(0) as u16;
 
         #[cfg(feature = "7C")]
-        return ((((offical_equation - 90) * 964) / 1000) + 75).max(0)
+        return ((((original_equation - 90) * 964) / 1000) + 75).max(0)
             as u16;
 
         #[cfg(feature = "7D")]
@@ -203,7 +201,7 @@ pub mod sensor_equations {
         return 285300 - (v_adc_millivolts as i32) * 5049 / 50;
         
         #[cfg(feature = "7B")]
-        return original_equation;
+        return original_equation + 8881; // ikik, always estimated 9v below true
 
         #[cfg(feature = "7C")]
         return original_equation;
@@ -212,35 +210,35 @@ pub mod sensor_equations {
         return original_equation;
     }
     pub fn tether_bias_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        let offical_equation = v_adc_millivolts as i32 * 101;
+        let original_equation = v_adc_millivolts as i32 * 101;
 
         #[cfg(feature = "7A")]
-        return (offical_equation * 105) / 100;
+        return (original_equation * 105) / 100;
         
         #[cfg(feature = "7B")]
-        return offical_equation;
+        return (original_equation * 1042) / 1000 + 557;
 
         #[cfg(feature = "7C")]
-        return offical_equation;
+        return original_equation;
 
         #[cfg(feature = "7D")]
-        return offical_equation;
+        return original_equation;
     }
     pub fn cathode_offset_voltage_eq(v_adc_millivolts: u16) -> i32 {
-        let offical_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
+        let original_equation = ((v_adc_millivolts as i32) * -84714 / 1000) + 406089;
 
         #[cfg(feature = "7A")]
         //return ((offical_equation - 25810) * 997)/ 1000 + 24886;
         return (v_adc_millivolts as i32 * -8446) / 100 + 404024;
         
         #[cfg(feature = "7B")]
-        return offical_equation;
+        return original_equation; // Pretty good already
         
         #[cfg(feature = "7C")]
-        return offical_equation;
+        return original_equation;
 
         #[cfg(feature = "7D")]
-        return offical_equation;
+        return original_equation;
     }
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
         let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
@@ -287,7 +285,7 @@ pub mod sensor_equations {
 
 
         #[cfg(feature = "7B")]
-        return original_equation;
+        return (original_equation * 1053) / 1000 + 78;
 
         #[cfg(feature = "7C")]
         return original_equation;
@@ -296,15 +294,15 @@ pub mod sensor_equations {
         return original_equation;
     }
 
-    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
+    pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> i16 {
         // TODO: Does this need to be updated?
-        let original_equation = ((-(v_adc_millivolts as i32) + (40_000 / 9)) * 43) / 10;
+        let original_equation = (-(v_adc_millivolts as i32) * 5832) / 1000 + 14494;
         
          #[cfg(feature = "7A")]
         return original_equation as u16;
 
         #[cfg(feature = "7B")]
-        return original_equation as u16;
+        return ((original_equation * 1562) / 1000 + 56) as i16;
 
         #[cfg(feature = "7C")]
         return original_equation as u16;
@@ -322,7 +320,7 @@ pub mod sensor_equations {
         return (((original_equation * 680) / 1000) + 123) as u16;
 
         #[cfg(feature = "7B")]
-        return original_equation as u16;
+        return (((((original_equation * 5235) / 10000) + 75) * 1029) / 1000) as u16;
 
         #[cfg(feature = "7C")]
         return original_equation as u16;

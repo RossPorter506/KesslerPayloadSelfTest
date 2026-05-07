@@ -70,8 +70,9 @@ mod tvac;
 mod testing;
 use testing::{
     AutomatedFunctionalTests, AutomatedPerformanceTests, ManualFunctionalTests,
-    ManualPerformanceTests,
+    ManualPerformanceTests, output_csv,
 };
+use serial::read_num;
 use void::ResultVoidExt;
 
 use crate::{
@@ -89,7 +90,70 @@ fn main() -> ! {
 
     let mut board = testing::self_test(board);
 
-    idle_loop(&mut board.led_pins);
+    let mut board = board.into_enabled_payload();
+    let mut board = board.into_enabled_heater();
+
+    loop {
+        match display_menu(&mut board.serial_reader) {
+            1 => {
+                ManualPerformanceTests::test_heater_voltage(&mut board);
+                output_csv();
+            }
+            2 => {
+                ManualPerformanceTests::test_heater_current(&mut board);
+                output_csv();
+            }
+            3 => {
+                ManualPerformanceTests::test_tether_bias_voltage(&mut board);
+                output_csv();
+            }
+            4 => {
+                ManualPerformanceTests::test_tether_bias_current(&mut board);
+                output_csv();
+            }
+            5 => {
+                ManualPerformanceTests::test_cathode_offset_voltage(&mut board);
+                output_csv();
+            }
+            6 => {
+                ManualPerformanceTests::test_cathode_offset_current(&mut board);
+                output_csv();
+            }
+            7 => {
+                ManualPerformanceTests::test_repeller_voltage(&mut board);
+                output_csv();
+            }
+            8 => {
+                ManualPerformanceTests::test_pinpuller_current(&mut board);
+                output_csv();
+            }
+            9 => {
+                ManualPerformanceTests::aperture_current_test(&mut board);
+                output_csv();
+            }
+            0 => break,
+            _ => println!("Invalid selection"),
+        }
+    }
+
+    idle_loop(&mut board.led_pins)
+}
+
+fn display_menu<USCI: SerialUsci>(serial_reader: &mut msp430fr2x5x_hal::serial::Rx<USCI>) -> i32 {
+    println!("");
+    println!("=== Calibration Test Menu ===");
+    println!("1: Heater Voltage");
+    println!("2: Heater Current");
+    println!("3: Tether Bias Voltage");
+    println!("4: Tether Bias Current");
+    println!("5: Cathode Offset Voltage");
+    println!("6: Cathode Offset Current");
+    println!("7: Repeller Voltage");
+    println!("8: Pinpuller Current");
+    println!("9: Aperture Current");
+    println!("0: Exit");
+    print!("Select test: ");
+    read_num(serial_reader)
 }
 
 /// Take and configure MCU peripherals

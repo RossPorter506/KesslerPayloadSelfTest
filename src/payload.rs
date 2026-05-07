@@ -136,7 +136,7 @@ impl<const PSTATE: PayloadState, const HSTATE: HeaterState> Payload<PSTATE, HSTA
         }
     }
     // Aperture
-    pub fn get_aperture_current_microamps(&mut self) -> u16 {
+    pub fn get_aperture_current_microamps(&mut self) -> i16 {
         // The aperture CS pin also controls whether the aperture ADC and circuitry are powered.
         // They should be powered for at least 5ms before a value is requested.
         self.aperture_adc.cs_pin.set_low().ok();

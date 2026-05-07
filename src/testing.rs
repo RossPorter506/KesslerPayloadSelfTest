@@ -1,5 +1,7 @@
+use core::cell::UnsafeCell;
 use core::convert::Infallible;
 
+use critical_section::Mutex;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use msp430fr2355::E_USCI_A1;
 use msp430fr2x5x_hal::serial::{Rx, SerialUsci};
@@ -1024,8 +1026,8 @@ pub mod heater_mock {
 }
 
 pub mod hvdc_mock {
-    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_150;
-    pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 98_300;
+    pub const MOCK_TETHER_BIAS_RESISTANCE_OHMS: u32 = 98_000;
+    pub const MOCK_CATHODE_OFFSET_RESISTANCE_OHMS: u32 = 99_370;
 }
 
 fn test_temperature_sensors_against_known_temp<
@@ -1214,194 +1216,129 @@ impl ManualPerformanceTests {
     }*/
 
     /// Dependencies: DAC
-    pub fn test_cathode_offset_voltage<'a, const DONTCARE: HeaterState>(
-        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        // spi_bus: &'a mut PayloadSPIController,
-        // debug_writer: &mut SerialWriter<USCI>,
-        // serial_reader: &mut Rx<USCI>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+    pub fn test_cathode_offset_voltage<const DONTCARE: HeaterState>(
+        payload: &mut Payload<{ PayloadOn }, DONTCARE>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 10;
+        reset_results("mV");
+        let mut step: u16 = 0;
 
-        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        payload.set_cathode_offset_switch(SwitchState::Connected);
+        for output_percentage in (10..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS))
                 / 100;
-            println!(
-                "Target output voltage: {}mV",
-                output_voltage_mv
-            );
 
-            // Set cathode voltage
             payload.set_cathode_offset_voltage(output_voltage_mv);
+            delay_cycles(10000);
 
-            delay_cycles(10000); //settling time
-
-            // Read cathode voltage, current
-            print!("Measure voltage and input (in mV): ");
+            print!("({}/{}) Target: {}mV. ", step, NUM_MEASUREMENTS, output_voltage_mv);
+            print!("Measured (mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
-            println!("");
+            let estimate_voltage_mv = payload.get_cathode_offset_voltage_millivolts();
+            println!("Estimate: {}", estimate_voltage_mv);
 
-            println!(
-                "Cathode offset mv: {}",
-                payload.get_cathode_offset_voltage_millivolts()
-            );
-
-            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
-            println!(
-                "Calculated voltage millirpd: {}",
-                (voltage_rpd * 1000).to_num::<i32>()
-            );
-
-            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
+            push_result(output_voltage_mv as i32, estimate_voltage_mv, measured_voltage_mv);
         }
 
-        // Set back to zero
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS);
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
-
-        let voltage_result =
-            calculate_performance_result("Cathode offset voltage", voltage_accuracy, 5, 20);
-        voltage_result
     }
     
-     // Apeture Current
-    pub fn apeture_current_test<
-        'a,
+     // Aperture Current
+    pub fn aperture_current_test<
         const DONTCARE1: PayloadState,
         const DONTCARE2: HeaterState
     >(
         payload: &mut Payload<DONTCARE1, DONTCARE2>
-    ){
-        println!("Running Apeture Current Test");
+    ) {
+        println!("Running Aperture Current Test");
+        reset_results("uA");
+        let mut step: u16 = 0;
 
-        let probe_resitance: u32 = 989; // Update based on measrement of resistor used
-        
+        let probe_resistance: u32 = 984;
         let sense_resistance: u32 = 1;
         let max_current_ma: u32 = 5;
-
-        let max_voltage_mv: u32 = (max_current_ma*(probe_resitance+sense_resistance));
+        let max_voltage_mv: u32 = max_current_ma * (probe_resistance + sense_resistance);
+        let num_steps: u8 = 10;
 
         payload.aperture_adc.cs_pin.set_low().ok();
-        crate::delay_cycles(5_000); // 5ms
-
-        payload
-                .aperture_adc
-                .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
-            
+        crate::delay_cycles(5_000);
+        payload.aperture_adc.read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
         payload.aperture_adc.cs_pin.set_high().ok();
-        crate::delay_cycles(5_000); // 5ms
+        crate::delay_cycles(5_000);
 
-
-        // Any amount of cycles will work
         for power_supply_voltage in (0..max_voltage_mv).step_by((max_voltage_mv/10) as usize) {
+            step += 1;
+            let expected_current_ua = ((power_supply_voltage * 1000) / (probe_resistance + sense_resistance)) as i32;
 
-            println!("Power supply: {} mV", power_supply_voltage);
-
-            // Wait for user to press something
+            print!("({}/{}) Set PSU to {}mV (expect {}uA). Press key when ready: ", step, num_steps, power_supply_voltage, expected_current_ua);
             wait_for_any_packet(&mut payload.serial_reader);
 
-            // The aperture CS pin also controls whether the aperture ADC and circuitry are powered.
-            // They should be powered for at least 5ms before a value is requested.
             payload.aperture_adc.cs_pin.set_low().ok();
-            crate::delay_cycles(5_000); // 5ms
+            crate::delay_cycles(5_000);
 
-
-            // Print measured uA
             let measured_aperture_adc_mv = payload
                 .aperture_adc
                 .read_voltage_from(&APERTURE_CURRENT_SENSOR, &mut payload.spi);
-            
-            println!("Raw ADC Value {}", measured_aperture_adc_mv);
 
-            let measured_aperture_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv);
+            let estimate_current_ua = self::sensor_equations::aperture_current_sensor_eq(measured_aperture_adc_mv) as i32;
+            println!("Estimate: {}", estimate_current_ua);
+            print!("Measured (uA): ");
+            let actual_current_ua = read_num(&mut payload.serial_reader);
 
-            println!(
-                "Measured aperture current: {}uA",
-                measured_aperture_current_ua
-            );
-
-            println!("Expected Current: {} uA", (power_supply_voltage*1000)/(probe_resitance+sense_resistance));
-
-            println!("");
+            push_result(expected_current_ua, estimate_current_ua, actual_current_ua);
 
             payload.aperture_adc.cs_pin.set_high().ok();
-            crate::delay_cycles(5_000); // 5ms
-            // Put this against calculated theoretical uA
+            crate::delay_cycles(5_000);
         }
     }
 
 
 
-    pub fn test_repeller_voltage<'a, const DONTCARE: HeaterState>(
-        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        // spi_bus: &'a mut PayloadSPIController,
-        // debug_writer: &mut SerialWriter<USCI>,
-        // serial_reader: &mut Rx<USCI>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+    pub fn test_repeller_voltage<const DONTCARE: HeaterState>(
+        payload: &mut Payload<{ PayloadOn }, DONTCARE>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 10;
+        reset_results("mV");
+        let mut step: u16 = 0;
 
-        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        payload.set_tether_bias_switch(SwitchState::Connected);
+        for output_percentage in (10..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (REPELLER_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (REPELLER_MAX_VOLTAGE_MILLIVOLTS))
                 / 100;
-            println!(
-                "Target output voltage: {}mV",
-                output_voltage_mv
-            );
 
-            // Set cathode offset voltage
             payload.set_tether_bias_voltage(output_voltage_mv);
+            delay_cycles(10000);
 
-            delay_cycles(10000); //settling time
-
-            // Read repeller voltage, current
-            print!("Measure voltage and input (in mV): ");
+            print!("({}/{}) Target: {}mV. ", step, NUM_MEASUREMENTS, output_voltage_mv);
+            print!("Measured (mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
-            println!("");
+            let estimate_voltage_mv = payload.get_repeller_voltage_millivolts();
+            println!("Estimate: {}", estimate_voltage_mv);
 
-            println!(
-                "Repeller voltage mv: {}",
-                payload.get_repeller_voltage_millivolts()
-            );
-
-            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
-            println!(
-                "Calculated voltage millirpd: {}",
-                (voltage_rpd * 1000).to_num::<i32>()
-            );
-
-            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
+            push_result(output_voltage_mv as i32, estimate_voltage_mv as i32, measured_voltage_mv);
         }
 
-        // Set back to zero
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
         payload.set_tether_bias_switch(SwitchState::Disconnected);
-
-        let voltage_result =
-            calculate_performance_result("Repeller voltage", voltage_accuracy, 5, 20);
-        voltage_result
     }
 
-    pub fn test_cathode_offset_current<'a, const DONTCARE: HeaterState>(
-        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-        // spi_bus: &'a mut PayloadSPIController,
-        // debug_writer: &mut SerialWriter<USCI>,
-        // serial_reader: &mut Rx<USCI>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 99_440;
-        let mut current_accuracy: Fxd = Fxd::ZERO;
+    pub fn test_cathode_offset_current<const DONTCARE: HeaterState>(
+        payload: &mut Payload<{ PayloadOn }, DONTCARE>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 11;
+        reset_results("uA");
+        let mut step: u16 = 0;
 
-        payload.set_cathode_offset_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        payload.set_cathode_offset_switch(SwitchState::Connected);
+        for output_percentage in (0..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (CATHODE_OFFSET_MAX_VOLTAGE_MILLIVOLTS))
@@ -1409,101 +1346,71 @@ impl ManualPerformanceTests {
 
             payload.set_cathode_offset_voltage(output_voltage_mv);
 
-
-            let expected_voltage_mv: u32 = output_voltage_mv; // assume zero error between target voltage and actual voltage
-            let expected_current_ua: i16 = ((1000 * expected_voltage_mv)
+            let expected_current_ua: i32 = ((1000 * output_voltage_mv)
                 / (hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS + CATHODE_SENSE_RESISTANCE_OHMS))
-                as i16;
-            println!("Expected current is: {}mA", expected_current_ua);
+                as i32;
 
-            //Manually measure the current
-            print!("Measure current and input (in uA): ");
-            let actual_current_ua = read_num(&mut payload.serial_reader);
-            println!("");
+            print!("({}/{}) Target: {}uA. ", step, NUM_MEASUREMENTS, expected_current_ua);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ua = (measured_voltage_mv * 1000)
+                / (hvdc_mock::MOCK_CATHODE_OFFSET_RESISTANCE_OHMS + CATHODE_SENSE_RESISTANCE_OHMS)
+                    as i32;
+            let estimate_current_ua: i32 = payload.get_cathode_offset_current_microamps();
+            println!("Estimate: {}", estimate_current_ua);
 
-            // Measure current
-            let measured_current_ua: i32 = payload.get_cathode_offset_current_microamps();
-            println!("Measured current is: {}uA", measured_current_ua);
-
-            //Determine accuracy
-            let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
-            println!(
-                "Calculated current millirpd: {}",
-                (current_rpd * 1000).to_num::<i32>()
-            );
-            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+            push_result(expected_current_ua, estimate_current_ua, actual_current_ua);
         }
 
-        // Set back to zero
         payload.set_cathode_offset_voltage(CATHODE_OFFSET_MIN_VOLTAGE_MILLIVOLTS);
         payload.set_cathode_offset_switch(SwitchState::Disconnected);
-
-        let current_result =
-            calculate_performance_result("Cathode offset current", current_accuracy, 5, 20);
-        current_result
     }
 
-    pub fn test_tether_bias_voltage<'a, const DONTCARE: HeaterState>(
-        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 100_000;
-        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+    pub fn test_tether_bias_voltage<const DONTCARE: HeaterState>(
+        payload: &mut Payload<{ PayloadOn }, DONTCARE>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 10;
+        reset_results("mV");
+        let mut step: u16 = 0;
 
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
-        
         println!("Wait for voltage to drain, then press any button");
         wait_for_any_packet(&mut payload.serial_reader);
-        println!(
-                "Tether mv: {}",
-                payload.get_tether_bias_voltage_millivolts()
-        );
 
-        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        payload.set_tether_bias_switch(SwitchState::Connected);
+        for output_percentage in (10..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS))
                 / 100;
-            println!("Target output voltage: {}mV", output_voltage_mv);
 
-            // Set tether bias
             payload.set_tether_bias_voltage(output_voltage_mv);
+            delay_cycles(10000);
 
-            delay_cycles(10000); //settling time
-
-            // Read tether bias voltage, current
-            print!("Measure voltage and input (in mV): ");
+            print!("({}/{}) Target: {}mV. ", step, NUM_MEASUREMENTS, output_voltage_mv);
+            print!("Measured (mV): ");
             let measured_voltage_mv = read_num(&mut payload.serial_reader);
-            println!("");
+            let estimate_voltage_mv = payload.get_tether_bias_voltage_millivolts();
+            println!("Estimate: {}", estimate_voltage_mv);
 
-            let voltage_rpd = calculate_rpd(measured_voltage_mv, output_voltage_mv as i32);
-            println!(
-                "Tether mv: {}",
-                payload.get_tether_bias_voltage_millivolts()
-            );
-            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
-            println!("");
+            push_result(output_voltage_mv as i32, estimate_voltage_mv, measured_voltage_mv);
         }
 
-        // Set back to zero
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
         payload.set_tether_bias_switch(SwitchState::Disconnected);
-
-        let voltage_result =
-            calculate_performance_result("Tether bias voltage", voltage_accuracy, 5, 20);
-        voltage_result
     }
 
-    pub fn test_tether_bias_current<'a, const DONTCARE: HeaterState>(
-        payload: &'a mut Payload<{ PayloadOn }, DONTCARE>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
-        const TEST_RESISTANCE: u32 = 98_000;
-        let mut current_accuracy: Fxd = Fxd::ZERO;
+    pub fn test_tether_bias_current<const DONTCARE: HeaterState>(
+        payload: &mut Payload<{ PayloadOn }, DONTCARE>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 10;
+        reset_results("uA");
+        let mut step: u16 = 0;
 
-        payload.set_tether_bias_switch(SwitchState::Connected); // connect to exterior
-        for (i, output_percentage) in (10..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        payload.set_tether_bias_switch(SwitchState::Connected);
+        for output_percentage in (10..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u32 = ((100 - output_percentage)
                 * (TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS)
                 + output_percentage * (TETHER_BIAS_MAX_VOLTAGE_MILLIVOLTS))
@@ -1511,181 +1418,125 @@ impl ManualPerformanceTests {
 
             payload.set_tether_bias_voltage(output_voltage_mv);
 
-            let expected_voltage_mv: u32 = output_voltage_mv; // assume zero error between target voltage and actual voltage
-            let expected_current_ua: i16 = ((1000 * expected_voltage_mv)
+            let expected_current_ua: i32 = ((1000 * output_voltage_mv)
                 / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS))
-                as i16;
-            println!("Expected current is: {}uA", expected_current_ua);
-            
-            //Manually measure the current
-            print!("Measure current and input (in uA): ");
-            let actual_current_ua = read_num(&mut payload.serial_reader);
-            println!("");
-            
-            // Measure current
-            let measured_current_ua: i32 = payload.get_tether_bias_current_microamps();
-            println!("Measured current is: {}uA", measured_current_ua);
+                as i32;
 
-            //Determine accuracy
-            let current_rpd = calculate_rpd(measured_current_ua, actual_current_ua);
-            println!(
-                "Calculated current millirpd: {}",
-                (current_rpd * 1000).to_num::<i32>()
-            );
-            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+            print!("({}/{}) Target: {}uA. ", step, NUM_MEASUREMENTS, expected_current_ua);
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ua = (measured_voltage_mv * 1000)
+                / (hvdc_mock::MOCK_TETHER_BIAS_RESISTANCE_OHMS + TETHER_SENSE_RESISTANCE_OHMS)
+                    as i32;
+            let estimate_current_ua: i32 = payload.get_tether_bias_current_microamps();
+            println!("Estimate: {}", estimate_current_ua);
+
+            push_result(expected_current_ua, estimate_current_ua, actual_current_ua);
         }
 
-        // Set back to zero
         payload.set_tether_bias_voltage(TETHER_BIAS_MIN_VOLTAGE_MILLIVOLTS);
         payload.set_tether_bias_switch(SwitchState::Disconnected);
-
-        let current_result =
-            calculate_performance_result("Tether bias current", current_accuracy, 5, 20);
-        current_result
     }
 
     pub fn test_heater_voltage(
         payload: &mut Payload<{ PayloadOn }, { HeaterOn }>,
-    ) -> PerformanceResult<'_> {
-        const NUM_MEASUREMENTS: usize = 10;
-        let mut voltage_accuracy: Fxd = Fxd::ZERO;
+    ) {
+        const NUM_MEASUREMENTS: u8 = 11;
+        reset_results("mV");
+        let mut step: u16 = 0;
 
-        for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        for output_percentage in (0..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u16 = (((100 - output_percentage)
                 * (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32)
                 + output_percentage * (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32))
                 / 100) as u16;
 
-            // Set cathode voltage
             payload.set_heater_voltage(output_voltage_mv);
-
-            println!("Target set to: {}mV", output_voltage_mv);
-
-            print!("Measure voltage and input (in mV): ");
+            print!("({}/{}) Target: {}mV. ", step, NUM_MEASUREMENTS, output_voltage_mv);
+            print!("Measured (mV): ");
             let actual_voltage_mv = read_num(&mut payload.serial_reader);
-            println!("");
+            let estimate_voltage_mv = payload.get_heater_voltage_millivolts();
+            println!("Estimate: {}", estimate_voltage_mv);
 
-            let measured_voltage_mv = payload.get_heater_voltage_millivolts();
-            println!("Measured as: {}", measured_voltage_mv);
-
-            let voltage_rpd = calculate_rpd(measured_voltage_mv as i32, actual_voltage_mv);
-            println!(
-                "Calculated voltage millirpd: {}",
-                (voltage_rpd * 1000).to_num::<i32>()
-            );
-            voltage_accuracy = in_place_average(voltage_accuracy, voltage_rpd, i as u16);
-            println!("");
+            push_result(output_voltage_mv as i32, estimate_voltage_mv as i32, actual_voltage_mv);
         }
-
-        let voltage_result =
-            calculate_performance_result("Heater voltage", voltage_accuracy, 5, 20);
-        voltage_result
     }
 
-    pub fn test_heater_current<'a>(
-        payload: &'a mut Payload<{ PayloadOn }, { HeaterOn }>,
-    ) -> PerformanceResult<'a> {
-        const NUM_MEASUREMENTS: usize = 10;
+    pub fn test_heater_current(
+        payload: &mut Payload<{ PayloadOn }, { HeaterOn }>,
+    ) {
+        const NUM_MEASUREMENTS: u8 = 11;
+        reset_results("mA");
+        let mut step: u16 = 0;
 
-        let mut current_accuracy: Fxd = Fxd::ZERO;
-
-        for (i, output_percentage) in (0..=100u32).step_by(100 / NUM_MEASUREMENTS).enumerate() {
+        for output_percentage in (0..=100u32).step_by(10) {
+            step += 1;
             let output_voltage_mv: u16 = (((100 - output_percentage)
                 * (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32)
                 + output_percentage * (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32))
                 / 100) as u16;
 
-            // Set heater voltage
             payload.set_heater_voltage(output_voltage_mv);
-            println!("Set voltage to: {}mV", output_voltage_mv);
             delay_cycles(100_000); //settling time
 
-            // Calculate expected voltage and current (only for reference)
-            let expected_voltage_mv: u32 = output_voltage_mv as u32; // assume zero error between target voltage and actual voltage
-            let expected_current_ma: i16 = ((1000 * expected_voltage_mv)
+            let expected_current_ma: i16 = ((1000 * output_voltage_mv as u32)
                 / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as u32))
                 .min(heater_mock::POWER_LIMITED_MAX_CURRENT_MA.to_num())
                 as i16;
-            println!("Expected current is: {}mA", expected_current_ma);
+            let estimate_current_ma: i16 = payload.get_heater_current_milliamps();
 
-            // Measure current
-            let measured_current_ma: i16 = payload.get_heater_current_milliamps();
-            println!("Measured current is: {}mA", measured_current_ma);
+            print!("({}/{}) Target: {}mA. ", step, NUM_MEASUREMENTS, expected_current_ma);
+            println!("Estimate: {}", estimate_current_ma);
 
-            //Manually measure the current
-            println!("Measure current and input (in mA): ");
-            let actual_current_ma = read_num(&mut payload.serial_reader);
-            println!("");
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ma = (measured_voltage_mv * 1000)
+                / (heater_mock::CIRCUIT_AND_PROBE_RESISTANCE_MOHMS as i32);
 
-            //Determine accuracy
-            let current_rpd = calculate_rpd(measured_current_ma as i32, actual_current_ma);
-            println!(
-                "Calculated current millirpd: {}",
-                (current_rpd * 1000).to_num::<i32>()
-            );
-            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+            push_result(expected_current_ma as i32, estimate_current_ma as i32, actual_current_ma);
         }
-
-        let current_result =
-            calculate_performance_result("Heater current", current_accuracy, 5, 20);
-        current_result
     }
     /// Setup: Place 1.2 ohm (10W+) resistor between pinpuller pins.
     ///
     /// Dependencies: Pinpuller, pinpuller current sensor, misc ADC, signal processing circuitry
     pub fn test_pinpuller_current<
-        'a,
         const DONTCARE1: PayloadState,
         const DONTCARE2: HeaterState,
     >(
-        payload: &'a mut Payload<DONTCARE1, DONTCARE2>,
-    ) -> PerformanceResult<'a> {
-        let mut current_accuracy: Fxd = Fxd::ZERO;
-        let mut expected_current_ma: i16;
-        let mut measured_current_ma: i16;
+        payload: &mut Payload<DONTCARE1, DONTCARE2>,
+    ) {
+        reset_results("mA");
+        let mut step: u16 = 0;
+        const NUM_MEASUREMENTS: u8 = 9;
         let voltage_values_mv: [i32; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
         let rp_sense: i32 = 82;
         let r122: i32 = 400;
-        let probe_resistance: i32 = 10; // Measure resistance with multimeter
-        let wirewound_res: i32 = 1230; // Measure resistance with multimeter
+        let wirewound_res: i32 = 1230;
         let mosfets: i32 = 27 * 2;
         let wire_resistance: i32 = 100 + 130;
-        let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance; // Units: mOhms
+        let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance;
 
-        // Select burn wire 1 to form current loop.
         payload.pinpuller_pins.burn_wire_2.set_high().ok();
 
-        // Loop over 10 voltages (in mV: 400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300)
-        for (i, set_voltage) in voltage_values_mv.iter().enumerate() {
-            // Asking user to set required voltage
-            println!(
-                "Set voltage on power supply to {} mV. Once set, press any key to continue",
-                set_voltage
-            );
+        for set_voltage in voltage_values_mv.iter() {
+            step += 1;
+            let expected_current_ma = ((set_voltage * 1000) / total_resistance) as i32;
+
+            print!("({}/{}) Set PSU to {}mV (expect {}mA). Press key: ", step, NUM_MEASUREMENTS, set_voltage, expected_current_ma);
             wait_for_any_packet(&mut payload.serial_reader);
 
-            // Obtain expected (I = V/R) and measured current in mA
-            expected_current_ma = ((set_voltage * 1000) / total_resistance) as i16;
-            measured_current_ma = payload.get_pinpuller_current_milliamps() as i16;
-            // User inputs actual current from manual measurement
-            println!("Measure current and input (in mA): ");
-            let actual_current_ma = read_num(&mut payload.serial_reader) as i16;
+            let estimate_current_ma = payload.get_pinpuller_current_milliamps() as i32;
+            println!("Estimate: {}", estimate_current_ma);
+            
+            print!("Measured (mV): ");
+            let measured_voltage_mv = read_num(&mut payload.serial_reader);
+            let actual_current_ma = (measured_voltage_mv * 1000) / total_resistance;
 
-            // Print results
-            println!("Expected current is {} mA", expected_current_ma);
-            println!("Measured current is {} mA", measured_current_ma);
-            println!("Actual current is {} mA", actual_current_ma);
-
-            // Calculate RPD and accuracy
-            let current_rpd = calculate_rpd(measured_current_ma as i32, actual_current_ma as i32);
-            println!(
-                "Calculated current millirpd: {}",
-                (current_rpd * 1000).to_num::<i32>()
-            );
-            current_accuracy = in_place_average(current_accuracy, current_rpd, i as u16);
+            push_result(expected_current_ma, estimate_current_ma, actual_current_ma);
         }
 
-        PerformanceResult::default()
+        payload.pinpuller_pins.burn_wire_2.set_low().ok();
     }
 
     pub fn thermal_chamber_temp_sensors_test<
@@ -1740,6 +1591,97 @@ impl ManualPerformanceTests {
             delay_cycles(1_000_000);
         }
     }
+}
+
+/// Single calibration data point
+#[derive(Copy, Clone, Default)]
+pub struct CalibrationPoint {
+    pub target: i32,
+    pub estimate: i32,
+    pub measured: i32,
+}
+
+/// Maximum data points (tests use 10-11 typically)
+pub const MAX_DATA_POINTS: usize = 12;
+
+/// Results buffer for a calibration test
+pub struct CalibrationResults {
+    pub unit: &'static str,
+    pub count: usize,
+    pub points: [CalibrationPoint; MAX_DATA_POINTS],
+}
+
+impl CalibrationResults {
+    pub fn new(unit: &'static str) -> Self {
+        Self {
+            unit,
+            count: 0,
+            points: [CalibrationPoint::default(); MAX_DATA_POINTS],
+        }
+    }
+
+    pub fn push(&mut self, target: i32, estimate: i32, measured: i32) {
+        if self.count < MAX_DATA_POINTS {
+            self.points[self.count] = CalibrationPoint {
+                target,
+                estimate,
+                measured,
+            };
+            self.count += 1;
+        }
+    }
+}
+
+/// Static storage for calibration results (avoids stack overflow on MSP430)
+static RESULTS: Mutex<UnsafeCell<CalibrationResults>> = Mutex::new(UnsafeCell::new(CalibrationResults {
+    unit: "",
+    count: 0,
+    points: [CalibrationPoint { target: 0, estimate: 0, measured: 0 }; MAX_DATA_POINTS],
+}));
+
+/// Reset and initialize the static results buffer
+pub fn reset_results(unit: &'static str) {
+    critical_section::with(|cs| {
+        let results = unsafe { &mut *RESULTS.borrow(cs).get() };
+        results.unit = unit;
+        results.count = 0;
+    });
+}
+
+/// Push a data point to the static results buffer
+pub fn push_result(target: i32, estimate: i32, measured: i32) {
+    critical_section::with(|cs| {
+        let results = unsafe { &mut *RESULTS.borrow(cs).get() };
+        if results.count < MAX_DATA_POINTS {
+            results.points[results.count] = CalibrationPoint { target, estimate, measured };
+            results.count += 1;
+        }
+    });
+}
+
+/// Output the static results buffer as CSV
+pub fn output_csv() {
+    critical_section::with(|cs| {
+        let results = unsafe { &*RESULTS.borrow(cs).get() };
+        println!("");
+        println!("=== CSV START ===");
+        print!("id,Target[");
+        print!("{}", results.unit);
+        print!("],Estimate[");
+        print!("{}", results.unit);
+        print!("],Measured[");
+        print!("{}", results.unit);
+        println!("]");
+        let mut idx: u8 = 0;
+        for p in results.points.iter() {
+            if (idx as usize) >= results.count {
+                break;
+            }
+            println!("{},{},{},{}", idx, p.target, p.estimate, p.measured);
+            idx += 1;
+        }
+        println!("=== CSV END ===");
+    });
 }
 
 /// Functional test result.
