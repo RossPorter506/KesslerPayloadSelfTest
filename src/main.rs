@@ -86,9 +86,9 @@ use crate::{
 #[allow(unused_mut)]
 #[entry]
 fn main() -> ! {
-    let mut board = configure_board();
+    let board = configure_board();
 
-    println!("hello world");
+    let mut board = testing::self_test(board);
 
     let mut board = board.into_enabled_payload();
     let mut board = board.into_enabled_heater();
@@ -287,16 +287,8 @@ fn collect_payload_peripherals(cs_pins: PayloadSPIChipSelectPins) -> PayloadPeri
     }
 }
 
-// Takes raw port peripherals and returns actually useful pin collections
-fn collect_pins(
-    pmm: PMM,
-    p1: P1,
-    p2: P2,
-    p3: P3,
-    p4: P4,
-    p5: P5,
-    p6: P6,
-) -> (
+// Takes raw port peripherals and returns actually useful pin collections 
+fn collect_pins(pmm: PMM, p1: P1, p2: P2, p3: P3, p4: P4, p5: P5, p6: P6) -> (
     PayloadSPIBitBangPins,
     PinpullerActivationPins,
     LEDPins,
@@ -304,8 +296,14 @@ fn collect_pins(
     TetherLMSPins,
     DeploySensePins,
     PayloadSPIChipSelectPins,
-    DebugSerialPins,
-) {
+    DebugSerialPins){
+
+    // Set pinpuller pins low even before they're set as outputs
+    unsafe {
+        p3.p3out.clear_bits(|w| w.bits(!((1<<2) | (1<<3))));
+        p5.p5out.clear_bits(|w| w.bits(!((1<<0) | (1<<1))));
+    }
+
     let pmm = Pmm::new(pmm);
     let port1 = Batch::new(p1).split(&pmm);
     let port2 = Batch::new(p2).split(&pmm);
@@ -317,65 +315,58 @@ fn collect_pins(
     let payload_spi_pins = PayloadSPIBitBangPins {
         miso: port4.pin7.pullup(),
         mosi: port4.pin6.to_output(),
-        sck: port4.pin5.to_output(),
+        sck:  port4.pin5.to_output(),
     };
 
-    let pinpuller_pins = PinpullerActivationPins {
-        burn_wire_1: port3.pin2.to_output(),
+    let pinpuller_pins = PinpullerActivationPins{ 
+        burn_wire_1:        port3.pin2.to_output(),
         burn_wire_1_backup: port3.pin3.to_output(),
-        burn_wire_2: port5.pin0.to_output(),
+        burn_wire_2:        port5.pin0.to_output(),
         burn_wire_2_backup: port5.pin1.to_output(),
     };
 
-    let led_pins = LEDPins {
-        red_led: port2.pin1.to_output(),
-        yellow_led: port2.pin2.to_output(),
-        green_led: port2.pin3.to_output(),
-    };
+    let mut red_led = port2.pin1.to_output();
+    red_led.set_low().ok();
+    let mut yellow_led = port2.pin2.to_output(); 
+    yellow_led.set_low().ok();
+    let mut green_led = port2.pin3.to_output();
+    green_led.set_low().ok();
+    let led_pins = LEDPins{ red_led, green_led, yellow_led };
 
-    let payload_control_pins = PayloadControlPins {
+    let payload_control_pins = PayloadControlPins{   
         payload_enable: port6.pin6.to_output(),
-        heater_enable: port4.pin4.to_output(),
-        cathode_switch: port3.pin0.to_output(),
+        heater_enable: port4.pin4.to_output(), 
+        cathode_switch: port3.pin0.to_output(), 
         tether_switch: port6.pin1.to_output(),
     };
 
-    let lms_control_pins = TetherLMSPins {
-        lms_receiver_enable: port3.pin4.to_output(),
-        lms_led_enable: port3.pin5.to_output(),
+    let lms_control_pins = TetherLMSPins{   
+        lms_receiver_enable: port3.pin4.to_output(), 
+        lms_led_enable:      port3.pin5.to_output(),
     };
 
-    let deploy_sense_pins = DeploySensePins {
+    let deploy_sense_pins = DeploySensePins{
         endmass_sense_1: port5.pin2.pulldown(),
         endmass_sense_2: port3.pin1.pulldown(),
-        pinpuller_sense: port5.pin3.pullup(),
+        pinpuller_sense: port5.pin3.pullup()
     };
 
-    // in lieu of stateful output pins, constructor sets all pins high,
+    // in lieu of stateful output pins, constructor sets all pins high, 
     let payload_peripheral_cs_pins = PayloadSPIChipSelectPins::new(
-        port6.pin4.to_output(),
-        port6.pin3.to_output(),
-        port6.pin2.to_output(),
-        port6.pin0.to_output(),
-        port5.pin4.to_output(),
-        port1.pin3.to_output(),
+        port6.pin4.to_output(), 
+        port6.pin3.to_output(), 
+        port6.pin2.to_output(), 
+        port6.pin0.to_output(), 
+        port5.pin4.to_output(), 
+        port1.pin3.to_output()
     );
 
-    let debug_serial_pins = DebugSerialPins {
+    let debug_serial_pins = DebugSerialPins{
         rx: port4.pin2.to_output().to_alternate1(),
         tx: port4.pin3.to_output().to_alternate1(),
     };
 
-    (
-        payload_spi_pins,
-        pinpuller_pins,
-        led_pins,
-        payload_control_pins,
-        lms_control_pins,
-        deploy_sense_pins,
-        payload_peripheral_cs_pins,
-        debug_serial_pins,
-    )
+    (payload_spi_pins, pinpuller_pins, led_pins, payload_control_pins, lms_control_pins, deploy_sense_pins, payload_peripheral_cs_pins, debug_serial_pins)
 }
 
 // The compiler will emit calls to the abort() compiler intrinsic if debug assertions are

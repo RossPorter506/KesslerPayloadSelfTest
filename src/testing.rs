@@ -1013,7 +1013,7 @@ pub mod pinpuller_mock {
 pub mod heater_mock {
     use super::{fixed_sqrt, Fxd};
 
-    const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 10_000;
+    const MOCK_HEATER_RESISTANCE_MOHMS: u16 = 2600;
     const PROBE_RESISTANCE_MOHMS: u16 = 90;
     pub const CIRCUIT_RESISTANCE_MOHMS: u16 =
         MOCK_HEATER_RESISTANCE_MOHMS + super::HEATER_SENSE_RESISTANCE_MILLIOHMS as u16; // heater resistance + shunt resistor
