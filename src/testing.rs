@@ -1472,10 +1472,12 @@ impl ManualPerformanceTests {
 
         for output_percentage in (0..=100u32).step_by(10) {
             step += 1;
+            // 0 was HEATER_MIN_VOLTAGE_MILLIVOLTS and 1671 was HEATER_MAX_VOLTAGE_MILLIVOLTS
             let output_voltage_mv: u16 = (((100 - output_percentage)
-                * (HEATER_MIN_VOLTAGE_MILLIVOLTS as u32)
-                + output_percentage * (HEATER_MAX_VOLTAGE_MILLIVOLTS as u32))
+                * (0 as u32)
+                + output_percentage * (1671 as u32))
                 / 100) as u16;
+            println!("Output_voltage_mv: {}", output_voltage_mv);
 
             payload.set_heater_voltage(output_voltage_mv);
             delay_cycles(100_000); //settling time

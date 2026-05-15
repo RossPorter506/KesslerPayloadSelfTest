@@ -247,8 +247,8 @@ pub mod sensor_equations {
         return ((offical_equation * 935)/ 1000 + 11) as i16;
         
         #[cfg(feature = "7B")]
-        // return ((offical_equation * 949)/ 1000 + 18) as i16;
-        return offical_equation as i16;
+        // return ((offical_equation * 897)/ 1000 + 21) as i16;
+        return ((offical_equation * 949)/ 1000 + 18) as i16;
         
         #[cfg(feature = "7C")]
         return offical_equation as i16;
@@ -267,7 +267,8 @@ pub mod sensor_equations {
 
 
         #[cfg(feature = "7B")]
-        return offical_equation;
+        // Need to try outputting just the ADC voltage
+        return ((offical_equation * 964) / 1000) + 292;
 
         #[cfg(feature = "7C")]
         return offical_equation;
@@ -286,6 +287,7 @@ pub mod sensor_equations {
 
 
         #[cfg(feature = "7B")]
+        // Need to try outputting just the ADC voltage
         return (original_equation * 1053) / 1000 + 78;
 
         #[cfg(feature = "7C")]
