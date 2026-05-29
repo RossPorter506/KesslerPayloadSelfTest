@@ -240,6 +240,7 @@ pub mod sensor_equations {
         #[cfg(feature = "7D")]
         return original_equation;
     }
+    // -----------------------------------------CHECK THIS------------------------------------------
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
         let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
 
@@ -248,7 +249,7 @@ pub mod sensor_equations {
         
         #[cfg(feature = "7B")]
         // return ((offical_equation * 897)/ 1000 + 21) as i16;
-        return ((offical_equation * 949)/ 1000 + 18) as i16;
+        return ((offical_equation * 3878) / 1000) as i16;
         
         #[cfg(feature = "7C")]
         return offical_equation as i16;
@@ -297,6 +298,7 @@ pub mod sensor_equations {
         return original_equation;
     }
 
+    // -----------------------------------------CHECK THIS------------------------------------------
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> i16 {
         // TODO: Does this need to be updated?
         let original_equation = (-(v_adc_millivolts as i32) * 5832) / 1000 + 14494;
@@ -314,7 +316,7 @@ pub mod sensor_equations {
         return original_equation as u16;
 
     }
-
+    // -----------------------------------------CHECK THIS------------------------------------------
     pub fn pinpuller_current_sensor_eq(v_adc_millivolts: u16) -> u16 {
         // 832/625 offset added to tune pinpuller
         let original_equation = (v_adc_millivolts as u32 * 1000 * 832) / (1804 * 625);
