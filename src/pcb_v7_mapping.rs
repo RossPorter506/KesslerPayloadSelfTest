@@ -240,7 +240,7 @@ pub mod sensor_equations {
         #[cfg(feature = "7D")]
         return original_equation;
     }
-    // -----------------------------------------CHECK THIS------------------------------------------
+
     pub fn heater_current_eq(v_adc_millivolts: u16) -> i16 {
         let offical_equation = (((v_adc_millivolts as i32) * 9) / 50) - 3;
 
@@ -298,7 +298,6 @@ pub mod sensor_equations {
         return original_equation;
     }
 
-    // -----------------------------------------CHECK THIS------------------------------------------
     pub fn aperture_current_sensor_eq(v_adc_millivolts: u16) -> i16 {
         // TODO: Does this need to be updated?
         let original_equation = (-(v_adc_millivolts as i32) * 5832) / 1000 + 14494;
@@ -307,7 +306,7 @@ pub mod sensor_equations {
         return original_equation as u16;
 
         #[cfg(feature = "7B")]
-        return ((original_equation * 1562) / 1000 + 56) as i16;
+        return ((((original_equation * 1562) / 1000 + 56) * 1122) / 1000) as i16;
 
         #[cfg(feature = "7C")]
         return original_equation as u16;
@@ -325,7 +324,7 @@ pub mod sensor_equations {
         return (((original_equation * 680) / 1000) + 123) as u16;
 
         #[cfg(feature = "7B")]
-        return (((((original_equation * 5235) / 10000) + 75) * 1029) / 1000) as u16;
+        return (((((((original_equation * 5235) / 10000) + 75) * 1029) / 1000) * 6297) / 10000 + 40) as u16;
 
         #[cfg(feature = "7C")]
         return original_equation as u16;

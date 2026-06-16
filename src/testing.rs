@@ -107,7 +107,7 @@ impl AutomatedFunctionalTests {
         let result = Self::test_adc_functional(
             &mut payload.tether_adc,
             payload.spi.borrow(),
-            ADCChannel::IN7,
+            ADCChannel::IN6,
         );
         SensorResult {
             name: "Tether ADC",
@@ -166,7 +166,7 @@ impl AutomatedFunctionalTests {
         let result = Self::test_adc_functional(
             &mut payload.aperture_adc,
             payload.spi.borrow(),
-            ADCChannel::IN7,
+            ADCChannel::IN0,
         );
         SensorResult {
             name: "Aperture ADC",
@@ -1258,7 +1258,7 @@ impl ManualPerformanceTests {
         reset_results("uA");
         let mut step: u16 = 0;
 
-        let probe_resistance: u32 = 984;
+        let probe_resistance: u32 = 986;
         let sense_resistance: u32 = 1;
         let max_current_ma: u32 = 5;
         let max_voltage_mv: u32 = max_current_ma * (probe_resistance + sense_resistance);
@@ -1514,7 +1514,7 @@ impl ManualPerformanceTests {
         let voltage_values_mv: [i32; 9] = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200, 3300];
         let rp_sense: i32 = 82;
         let r122: i32 = 400;
-        let wirewound_res: i32 = 1230;
+        let wirewound_res: i32 = 1200;
         let mosfets: i32 = 27 * 2;
         let wire_resistance: i32 = 100 + 130;
         let total_resistance = rp_sense + r122 + wirewound_res + mosfets + wire_resistance;
