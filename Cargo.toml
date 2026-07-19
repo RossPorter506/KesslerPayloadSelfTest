@@ -9,6 +9,7 @@ repository = "https://github.com/RossPorter506/KesslerPayloadSelfTest"
 keywords = ["no-std", "msp430", "ti", "launchpad", "embedded-hal"]
 
 [features]
+default = ["debug_print"]
 debug_print = []
 7A = []
 7B = []
